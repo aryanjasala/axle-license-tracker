@@ -1,0 +1,43 @@
+{
+	"$schema": "https://playground.wordpress.net/blueprint-schema.json",
+	"meta": {
+		"title": "Axle License Tracker demo",
+		"author": "aryanjasala"
+	},
+	"landingPage": "/wp-admin/plugins.php?page=axle-license-tracker",
+	"preferredVersions": {
+		"php": "8.3",
+		"wp": "latest"
+	},
+	"features": {
+		"networking": true
+	},
+	"login": true,
+	"steps": [
+		{
+			"step": "installPlugin",
+			"pluginData": {
+				"resource": "git:directory",
+				"url": "https://github.com/aryanjasala/axle-license-tracker",
+				"ref": "main"
+			},
+			"options": {
+				"activate": true,
+				"targetFolderName": "axle-license-tracker"
+			}
+		},
+		{
+			"step": "writeFile",
+			"path": "/wordpress/wp-content/plugins/demo-pro-forms/demo-pro-forms.php",
+			"data": "<?php\n/**\n * Plugin Name: Demo Pro Forms\n * Description: A demo premium plugin whose vendor updater went silent.\n * Version: 2.2.0\n * Update URI: https://updates.example.com/demo-pro-forms\n */\n"
+		},
+		{
+			"step": "activatePlugin",
+			"pluginPath": "demo-pro-forms/demo-pro-forms.php"
+		},
+		{
+			"step": "runPHP",
+			"code": "<?php require_once '/wordpress/wp-load.php'; $tracker = AryanX\\Axle\\LicenseTracker\\Plugin::instance()->tracker(); $tracker->sync(); $ids = get_posts( array( 'post_type' => 'alc_license', 'numberposts' => 1, 'fields' => 'ids', 'meta_key' => '_alc_component', 'meta_value' => 'plugin:demo-pro-forms/demo-pro-forms.php' ) ); if ( $ids ) { foreach ( array( '_alc_renewal' => gmdate( 'Y-m-d', time() + 12 * DAY_IN_SECONDS ), '_alc_cost' => 7900, '_alc_currency' => 'USD', '_alc_cycle' => 'yearly', '_alc_owner' => 'Bean There' ) as $key => $value ) { update_post_meta( $ids[0], $key, $value ); } }"
+		}
+	]
+}

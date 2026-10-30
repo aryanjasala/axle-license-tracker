@@ -1,0 +1,15 @@
+{
+	"$comment": "Vendors with their own license scheme, matched by folder name or author URL. Filter: axle_license_tracker_vendors.",
+	"vendors": [
+		{ "id": "elementor", "name": "Elementor", "slugs": [ "elementor-pro" ], "authors": [ "elementor.com" ], "license_url": "https://my.elementor.com/subscriptions/" },
+		{ "id": "acf", "name": "Advanced Custom Fields", "slugs": [ "advanced-custom-fields-pro" ], "authors": [], "license_url": "https://www.advancedcustomfields.com/my-account/" },
+		{ "id": "wp-rocket", "name": "WP Rocket", "slugs": [ "wp-rocket" ], "authors": [ "wp-rocket.me" ], "license_url": "https://wp-rocket.me/account/" },
+		{ "id": "gravity-forms", "name": "Gravity Forms", "slugs": [ "gravityforms" ], "authors": [ "gravityforms.com", "rocketgenius.com" ], "license_url": "https://www.gravityforms.com/my-account/licenses/" },
+		{ "id": "elegant-themes", "name": "Elegant Themes", "slugs": [ "Divi", "Extra", "divi-builder" ], "authors": [ "elegantthemes.com" ], "license_url": "https://www.elegantthemes.com/members-area/" },
+		{ "id": "bricks", "name": "Bricks", "slugs": [ "bricks" ], "authors": [ "bricksbuilder.io" ], "license_url": "https://bricksbuilder.io/account/" },
+		{ "id": "beaver-builder", "name": "Beaver Builder", "slugs": [ "bb-plugin", "bb-theme", "bb-theme-builder" ], "authors": [ "wpbeaverbuilder.com" ], "license_url": "https://www.wpbeaverbuilder.com/my-account/" },
+		{ "id": "brainstorm-force", "name": "Brainstorm Force", "slugs": [ "astra-addon" ], "authors": [ "brainstormforce.com", "wpastra.com" ], "license_url": "https://store.brainstormforce.com/licenses/" },
+		{ "id": "woocommerce-com", "name": "WooCommerce.com", "slugs": [], "authors": [ "woocommerce.com", "woo.com" ], "license_url": "https://woocommerce.com/my-account/my-subscriptions/" },
+		{ "id": "envato", "name": "Envato", "slugs": [ "envato-market" ], "authors": [ "themeforest.net", "codecanyon.net", "envato.com" ], "license_url": "https://themeforest.net/downloads" }
+	]
+}

@@ -1,0 +1,14 @@
+{
+	"$comment": "Code signs of an updater or licensing SDK. The fingerprint scan reads PHP files (never runs them) and matches `path` against file paths and `pattern` (a regular expression) against file contents. Filter: axle_license_tracker_signatures.",
+	"signatures": [
+		{ "id": "freemius", "label": "Freemius", "path": "freemius/start.php" },
+		{ "id": "edd-sl", "label": "EDD Software Licensing", "pattern": "class\\s+\\w*EDD_SL_Plugin_Updater\\b" },
+		{ "id": "puc", "label": "Plugin Update Checker", "pattern": "Puc_v\\d+|YahnisElsts\\\\PluginUpdateChecker" },
+		{ "id": "wc-am", "label": "WooCommerce API Manager", "pattern": "class\\s+WC_AM_Client" },
+		{ "id": "uplink", "label": "StellarWP Uplink", "pattern": "StellarWP\\\\Uplink\\\\" },
+		{ "id": "surecart", "label": "SureCart Licensing", "pattern": "SureCart\\\\Licensing\\\\" },
+		{ "id": "appsero", "label": "Appsero", "pattern": "Appsero\\\\(Client|License|Updater)\\b" },
+		{ "id": "bsf-core", "label": "Brainstorm Force", "path": "bsf-core/" },
+		{ "id": "tgmpa", "label": "TGM Plugin Activation", "pattern": "class\\s+TGM_Plugin_Activation\\b", "bundles": true }
+	]
+}

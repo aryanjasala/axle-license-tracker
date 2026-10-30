@@ -1,0 +1,67 @@
+/* Axle License Tracker: Plugins > Licenses, the Plugins column and the dashboard widget. */
+.alc-pill {
+	display: inline-block;
+	padding: 1px 8px;
+	border-radius: 10px;
+	font-size: 12px;
+	line-height: 18px;
+	font-weight: 600;
+	white-space: nowrap;
+	background: #e5e7eb;
+	color: #2c3338;
+}
+.alc-state-valid,
+.alc-risk-ok { background: #d7f0dc; color: #0a4b1a; }
+.alc-state-expiring,
+.alc-risk-watch { background: #fcefc3; color: #553e00; }
+.alc-state-expired,
+.alc-state-invalid,
+.alc-risk-blocked { background: #fad4d4; color: #84100f; }
+.alc-state-missing,
+.alc-risk-at-risk { background: #fde1cb; color: #702c00; }
+.alc-state-not-applicable { background: #f0f0f1; color: #50575e; }
+.alc-pill-link { text-decoration: none; }
+.alc-pills { display: inline-flex; gap: 4px; flex-wrap: wrap; }
+
+.alc-wrap .alc-inline-form { display: inline; }
+.alc-tiles {
+	display: grid;
+	grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+	gap: 12px;
+	margin: 16px 0;
+}
+.alc-tile {
+	margin: 0;
+	padding: 12px 14px;
+	background: #fff;
+	border: 1px solid #dcdcde;
+	border-left: 4px solid #8c8f94;
+	border-radius: 2px;
+}
+.alc-tile-number { display: block; font-size: 22px; line-height: 1.3; font-weight: 600; color: #1d2327; }
+.alc-tile-cost .alc-tile-number { font-size: 16px; }
+.alc-tile-label { color: #50575e; }
+.alc-tile-premium { border-left-color: #7b4a12; }
+.alc-tile-expired { border-left-color: #b32d2e; }
+.alc-tile-expiring { border-left-color: #996800; }
+.alc-tile-at-risk { border-left-color: #c75400; }
+.alc-tile-missing { border-left-color: #c75400; }
+.alc-filters { margin: 8px 0 12px; clear: both; padding-top: 8px; }
+.alc-table td { vertical-align: top; }
+.alc-table .row-actions { position: static; color: #50575e; }
+.alc-muted { color: #50575e; font-size: 12px; }
+.alc-src { color: #50575e; font-size: 11px; font-style: italic; }
+.alc-warn { color: #8a2400; font-size: 12px; }
+.alc-tag { display: inline-block; padding: 0 6px; border: 1px solid #8c8f94; border-radius: 3px; font-size: 11px; color: #3c434a; }
+.alc-ignored td { opacity: 0.85; }
+.alc-empty { font-size: 14px; }
+.alc-detected { display: grid; grid-template-columns: max-content 1fr; gap: 4px 16px; max-width: 900px; }
+.alc-detected dt { font-weight: 600; }
+.alc-detected dd { margin: 0; }
+.alc-error { color: #b32d2e; margin: 4px 0 0; }
+.alc-edit input[aria-invalid="true"],
+.alc-edit select[aria-invalid="true"] { border-color: #b32d2e; }
+.alc-widget h3 { margin: 12px 0 6px; font-weight: 600; }
+.alc-widget ul { margin: 0; }
+.column-axle_license_tracker { width: 13em; }
+.alc-edit .alc-short { width: 11em; }
