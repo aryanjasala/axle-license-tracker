@@ -1,0 +1,65 @@
+{
+  "$comment": "Screens tests/e2e/a11y.spec.js checks with axe-core. This file belongs to the plugin: apply-template.py only writes it when it is missing. The fields are described in docs/DEVELOPMENT.md.",
+  "include": ["#wpbody-content"],
+  "exclude": [],
+  "screens": [
+    {
+      "name": "Plugins > Licenses with no premium plugins",
+      "setup": [{ "js": "seed.js", "call": "removeFixtures" }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker",
+      "steps": [{ "waitFor": ".alc-empty" }]
+    },
+    {
+      "name": "Plugins > Licenses with licenses",
+      "setup": [{ "js": "seed.js", "call": "seedDemo" }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker",
+      "steps": [{ "waitFor": ".alc-table" }]
+    },
+    {
+      "name": "All plugins and themes",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&view=all",
+      "steps": [{ "waitFor": ".alc-table" }]
+    },
+    {
+      "name": "Filtered to expired licenses",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&state=expired",
+      "steps": [{ "waitFor": ".alc-state-expired" }]
+    },
+    {
+      "name": "Edit license details",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&edit=plugin%3Aalc-edd-fixture%2Falc-edd-fixture.php",
+      "steps": [{ "waitFor": ".alc-edit" }]
+    },
+    {
+      "name": "Edit license details with errors",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&edit=plugin%3Aalc-edd-fixture%2Falc-edd-fixture.php",
+      "steps": [{ "fill": "#alc-cost", "value": "a lot" }, { "fill": "#alc-owner-email", "value": "nope" }, { "click": "#submit" }, { "waitFor": ".alc-error" }]
+    },
+    {
+      "name": "An ignored component",
+      "setup": [{ "wp": ["axle-license-tracker", "ignore", "plugin:alc-silent-fixture/alc-silent-fixture.php", "--note=Retired"] }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&edit=plugin%3Aalc-silent-fixture%2Falc-silent-fixture.php",
+      "steps": [{ "waitFor": "#alc-ignore-submit" }],
+      "cleanup": [{ "wp": ["axle-license-tracker", "ignore", "plugin:alc-silent-fixture/alc-silent-fixture.php", "--undo"] }]
+    },
+    {
+      "name": "Reminders settings",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=settings",
+      "steps": [{ "waitFor": ".alc-settings" }]
+    },
+    {
+      "name": "License column on the Plugins screen",
+      "url": "/wp-admin/plugins.php",
+      "include": ["td.column-axle_license_tracker"],
+      "steps": [{ "waitFor": ".alc-pill" }]
+    },
+    {
+      "name": "Licenses dashboard widget",
+      "url": "/wp-admin/index.php",
+      "include": ["#axle_license_tracker"],
+      "steps": [{ "waitFor": ".alc-widget" }],
+      "cleanup": [{ "js": "seed.js", "call": "removeFixtures" }]
+    }
+  ],
+  "skip": {}
+}
