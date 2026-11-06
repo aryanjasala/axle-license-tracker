@@ -25,6 +25,7 @@
 
 .alc-table .row-actions {
 	position: static;
+	color: var(--axle-muted, #646970);
 }
 
 .alc-muted {
