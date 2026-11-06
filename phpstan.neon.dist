@@ -3,6 +3,7 @@ parameters:
 	level: 6
 	paths:
 		- axle-license-tracker.php
+		- uninstall.php
 		- src
 	dynamicConstantNames:
 		- AXLE_LICENSE_TRACKER_HUB_KEY
