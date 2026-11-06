@@ -80,7 +80,7 @@ class DashboardWidget implements Service {
 		);
 		$upcoming = array_slice( $upcoming, 0, 5 );
 
-		echo '<div class="alc-widget">';
+		echo '<div class="axle-ui alc-widget">';
 		if ( $problems ) {
 			echo '<h3>' . esc_html__( 'Needs a look', 'axle-license-tracker' ) . '</h3><ul>';
 			foreach ( $problems as $row ) {

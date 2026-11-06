@@ -24,7 +24,16 @@ final class Display {
 	 * @return string HTML.
 	 */
 	public static function state( string $state ): string {
-		return sprintf( '<span class="alc-pill alc-state-%1$s">%2$s</span>', esc_attr( $state ), esc_html( Messages::get( 'state_' . $state ) ) );
+		$tones = array(
+			'valid'          => 'good',
+			'expiring'       => 'warning',
+			'expired'        => 'error',
+			'invalid'        => 'error',
+			'missing'        => 'warning',
+			'not-applicable' => 'neutral',
+		);
+
+		return sprintf( '<span class="axle-badge axle-badge--%3$s alc-pill alc-state-%1$s">%2$s</span>', esc_attr( $state ), esc_html( Messages::get( 'state_' . $state ) ), esc_attr( $tones[ $state ] ?? 'neutral' ) );
 	}
 
 	/**
@@ -38,7 +47,14 @@ final class Display {
 			return '';
 		}
 
-		return sprintf( '<span class="alc-pill alc-risk-%1$s">%2$s</span>', esc_attr( $risk ), esc_html( Messages::get( 'risk_' . $risk ) ) );
+		$tones = array(
+			'ok'      => 'good',
+			'watch'   => 'warning',
+			'at-risk' => 'warning',
+			'blocked' => 'error',
+		);
+
+		return sprintf( '<span class="axle-badge axle-badge--%3$s alc-pill alc-risk-%1$s">%2$s</span>', esc_attr( $risk ), esc_html( Messages::get( 'risk_' . $risk ) ), esc_attr( $tones[ $risk ] ?? 'neutral' ) );
 	}
 
 	/**
