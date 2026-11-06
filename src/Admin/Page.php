@@ -136,7 +136,8 @@ class Page implements Service {
 		}
 
 		$url = plugins_url( 'assets/', PLUGIN_FILE );
-		wp_enqueue_style( 'axle-license-tracker', $url . 'admin.css', array(), VERSION );
+		AxleUi::enqueue();
+		wp_enqueue_style( 'axle-license-tracker', $url . 'admin.css', array( AxleUi::HANDLE ), VERSION );
 		if ( 'plugins_page_' . self::SLUG !== $hook ) {
 			return;
 		}
@@ -177,7 +178,7 @@ class Page implements Service {
 		$edit = isset( $_GET['edit'] ) ? sanitize_text_field( wp_unslash( $_GET['edit'] ) ) : '';
 		// phpcs:enable WordPress.Security.NonceVerification.Recommended
 
-		echo '<div class="wrap alc-wrap">';
+		echo '<div class="wrap axle-ui alc-wrap">';
 		if ( '' !== $edit ) {
 			$this->render_edit( $edit );
 		} elseif ( 'settings' === $tab ) {
@@ -189,6 +190,7 @@ class Page implements Service {
 			$this->render_header( 'licenses' );
 			$this->render_list();
 		}
+		AxleUi::footer();
 		echo '</div>';
 	}
 
@@ -200,6 +202,14 @@ class Page implements Service {
 	private function render_header( string $current ): void {
 		echo '<h1 class="wp-heading-inline">' . esc_html__( 'Licenses', 'axle-license-tracker' ) . '</h1>';
 		if ( 'licenses' === $current ) {
+			$totals = Tracker::totals( $this->tracker->tracked() );
+			$alerts = (int) $totals['expired'] + (int) $totals['at_risk'] + (int) $totals['missing'];
+			if ( $alerts > 0 ) {
+				/* translators: %d: number of licenses that need a look. */
+				echo '<span class="axle-status"><span class="axle-badge axle-badge--' . ( $totals['expired'] > 0 ? 'error' : 'warning' ) . '">' . esc_html( sprintf( _n( '%d needs a look', '%d need a look', $alerts, 'axle-license-tracker' ), $alerts ) ) . '</span></span>';
+			} elseif ( $totals['premium'] > 0 ) {
+				echo '<span class="axle-status"><span class="axle-badge axle-badge--good">' . esc_html__( 'All licenses fine', 'axle-license-tracker' ) . '</span></span>';
+			}
 			printf( '<form method="post" action="%s" class="alc-inline-form"><input type="hidden" name="action" value="axle_license_tracker_recheck">', esc_url( admin_url( 'admin-post.php' ) ) );
 			wp_nonce_field( 'axle_license_tracker_recheck' );
 			printf( '<button type="submit" class="page-title-action">%s</button></form>', esc_html__( 'Check again', 'axle-license-tracker' ) );
@@ -221,6 +231,11 @@ class Page implements Service {
 			);
 		}
 		echo '</nav>';
+		if ( 'licenses' === $current ) {
+			echo '<p class="axle-intro">' . esc_html__( 'Shows which premium plugins and themes need a license, when each one renews, and whether updates are still arriving.', 'axle-license-tracker' ) . '</p>';
+		} else {
+			echo '<p class="axle-intro">' . esc_html__( 'Choose when renewal reminders go out and who gets them.', 'axle-license-tracker' ) . '</p>';
+		}
 	}
 
 	/**
@@ -291,7 +306,7 @@ class Page implements Service {
 		$this->render_filters( 'all' === $view ? $all : $tracked, $filters, $view );
 
 		if ( ! $rows ) {
-			echo '<p class="alc-empty">' . esc_html( $tracked || array_filter( $filters ) ? __( 'Nothing matches these filters.', 'axle-license-tracker' ) : Messages::get( 'no_premium' ) ) . '</p>';
+			echo '<div class="axle-empty alc-empty"><p>' . esc_html( $tracked || array_filter( $filters ) ? __( 'Nothing matches these filters.', 'axle-license-tracker' ) : Messages::get( 'no_premium' ) ) . '</p></div>';
 			$this->render_exports();
 			return;
 		}
@@ -331,24 +346,28 @@ class Page implements Service {
 		}
 
 		$tiles = array(
-			array( 'premium', (string) $totals['premium'], __( 'Premium plugins and themes', 'axle-license-tracker' ) ),
-			array( 'expired', (string) $totals['expired'], __( 'Expired', 'axle-license-tracker' ) ),
+			array( 'expired', (int) $totals['expired'], __( 'Expired', 'axle-license-tracker' ), 'error' ),
 			/* translators: %d: number of days. */
-			array( 'expiring', (string) $totals['expiring'], sprintf( _n( 'Renew within %d day', 'Renew within %d days', $window, 'axle-license-tracker' ), $window ) ),
-			array( 'at-risk', (string) $totals['at_risk'], __( 'Not getting updates', 'axle-license-tracker' ) ),
-			array( 'missing', (string) $totals['missing'], __( 'No license key', 'axle-license-tracker' ) ),
+			array( 'expiring', (int) $totals['expiring'], sprintf( _n( 'Renew within %d day', 'Renew within %d days', $window, 'axle-license-tracker' ), $window ), 'warning' ),
+			array( 'at-risk', (int) $totals['at_risk'], __( 'Not getting updates', 'axle-license-tracker' ), 'warning' ),
 		);
 
-		echo '<ul class="alc-tiles" aria-label="' . esc_attr__( 'Summary', 'axle-license-tracker' ) . '">';
+		echo '<div class="axle-stats" role="group" aria-label="' . esc_attr__( 'Summary', 'axle-license-tracker' ) . '">';
 		foreach ( $tiles as $tile ) {
-			printf( '<li class="alc-tile alc-tile-%1$s"><span class="alc-tile-number">%2$s</span> <span class="alc-tile-label">%3$s</span></li>', esc_attr( $tile[0] ), esc_html( $tile[1] ), esc_html( $tile[2] ) );
+			printf(
+				'<div class="axle-stat%4$s alc-tile alc-tile-%1$s"><span class="axle-stat__value alc-tile-number">%2$d</span><span class="axle-stat__label alc-tile-label">%3$s</span></div>',
+				esc_attr( $tile[0] ),
+				(int) $tile[1],
+				esc_html( $tile[2] ),
+				$tile[1] > 0 ? ' axle-stat--' . esc_attr( $tile[3] ) : ''
+			);
 		}
 		printf(
-			'<li class="alc-tile alc-tile-cost"><span class="alc-tile-number">%1$s</span> <span class="alc-tile-label">%2$s</span></li>',
+			'<div class="axle-stat alc-tile alc-tile-cost"><span class="axle-stat__value alc-tile-number">%1$s</span><span class="axle-stat__label alc-tile-label">%2$s</span></div>',
 			$costs ? implode( '<br>', $costs ) : '0', // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display::cost() escapes.
 			esc_html__( 'Yearly cost, per currency', 'axle-license-tracker' )
 		);
-		echo '</ul>';
+		echo '</div>';
 	}
 
 	/**
@@ -439,7 +458,7 @@ class Page implements Service {
 		// Component.
 		echo '<td class="alc-col-name"><strong>' . esc_html( $row['name'] ) . '</strong> <span class="alc-muted">' . esc_html( $row['version'] ) . '</span>';
 		if ( $row['ignored'] ) {
-			echo ' <span class="alc-tag">' . esc_html__( 'Ignored', 'axle-license-tracker' ) . '</span>';
+			echo ' <span class="axle-badge axle-badge--neutral alc-tag">' . esc_html__( 'Ignored', 'axle-license-tracker' ) . '</span>';
 		}
 		echo '<div class="row-actions alc-row-actions">';
 		$links = array();
@@ -567,7 +586,7 @@ class Page implements Service {
 	 */
 	private function render_edit( string $id ): void {
 		$row = $this->tracker->row( $id );
-		echo '<h1>' . esc_html__( 'Edit license details', 'axle-license-tracker' ) . '</h1>';
+		echo '<h1>' . esc_html__( 'Edit license details', 'axle-license-tracker' ) . '</h1><hr class="wp-header-end">';
 		echo '<p><a href="' . esc_url( self::url() ) . '">' . esc_html__( 'Back to Licenses', 'axle-license-tracker' ) . '</a></p>';
 		if ( ! $row ) {
 			echo '<div class="notice notice-error"><p>' . esc_html( Messages::get( 'not_found' ) ) . '</p></div>';
@@ -581,10 +600,11 @@ class Page implements Service {
 		$errors = is_array( $pending ) && ( $pending['component'] ?? '' ) === $id ? (array) $pending['errors'] : array();
 		$input  = is_array( $pending ) && ( $pending['component'] ?? '' ) === $id ? (array) $pending['input'] : array();
 
-		echo '<h2>' . esc_html( $row['name'] ) . ' <span class="alc-muted">' . esc_html( $row['version'] ) . '</span></h2>';
+		echo '<p class="axle-intro">' . esc_html__( 'Details you enter here win over what was detected. Leave a field empty to use the detected value.', 'axle-license-tracker' ) . '</p>';
 
 		// What detection found.
-		echo '<dl class="alc-detected">';
+		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html( $row['name'] ) . ' <span class="alc-muted">' . esc_html( $row['version'] ) . '</span></h2>';
+		echo '<dl class="axle-facts alc-detected">';
 		$facts = array(
 			__( 'Type', 'axle-license-tracker' )    => Messages::get( 'type_' . $row['type'] ),
 			__( 'Vendor', 'axle-license-tracker' )  => '' !== $row['vendor'] ? $row['vendor'] : __( 'Not detected', 'axle-license-tracker' ),
@@ -599,9 +619,7 @@ class Page implements Service {
 		foreach ( $facts as $label => $value ) {
 			echo '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd>';
 		}
-		echo '</dl>';
-
-		echo '<p>' . esc_html__( 'Details you enter here win over what was detected. Leave a field empty to use the detected value.', 'axle-license-tracker' ) . '</p>';
+		echo '</dl></section>';
 
 		$value = static function ( string $field ) use ( $row, $input ) {
 			if ( array_key_exists( $field, $input ) ) {
@@ -620,6 +638,7 @@ class Page implements Service {
 		printf( '<form method="post" action="%s" class="alc-edit" novalidate>', esc_url( admin_url( 'admin-post.php' ) ) );
 		echo '<input type="hidden" name="action" value="axle_license_tracker_save"><input type="hidden" name="component" value="' . esc_attr( $id ) . '">';
 		wp_nonce_field( 'axle_license_tracker_save' );
+		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html__( 'Details', 'axle-license-tracker' ) . '</h2>';
 		echo '<table class="form-table" role="presentation"><tbody>';
 
 		$labels  = array(
@@ -729,13 +748,13 @@ class Page implements Service {
 			}
 			echo '</td></tr>';
 		}
-		echo '</tbody></table>';
+		echo '</tbody></table></section>';
 		submit_button( __( 'Save details', 'axle-license-tracker' ) );
 		echo '</form>';
 
 		// Ignore.
-		echo '<h2 id="alc-ignore">' . esc_html__( 'Ignore', 'axle-license-tracker' ) . '</h2>';
-		printf( '<form method="post" action="%s" class="alc-ignore-form">', esc_url( admin_url( 'admin-post.php' ) ) );
+		printf( '<form method="post" action="%s" class="axle-card alc-ignore-form">', esc_url( admin_url( 'admin-post.php' ) ) );
+		echo '<h2 class="axle-card__title" id="alc-ignore">' . esc_html__( 'Ignore', 'axle-license-tracker' ) . '</h2>';
 		echo '<input type="hidden" name="action" value="axle_license_tracker_ignore"><input type="hidden" name="component" value="' . esc_attr( $id ) . '">';
 		wp_nonce_field( 'axle_license_tracker_ignore' );
 		if ( $row['ignored'] ) {
@@ -763,6 +782,7 @@ class Page implements Service {
 		printf( '<form method="post" action="%s" class="alc-settings">', esc_url( admin_url( 'admin-post.php' ) ) );
 		echo '<input type="hidden" name="action" value="axle_license_tracker_settings">';
 		wp_nonce_field( 'axle_license_tracker_settings' );
+		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html__( 'Renewal reminders', 'axle-license-tracker' ) . '</h2>';
 		echo '<table class="form-table" role="presentation"><tbody>';
 
 		printf(
@@ -782,7 +802,7 @@ class Page implements Service {
 		printf( '<label for="alc-alerts"><input type="checkbox" id="alc-alerts" name="alerts" value="1"%1$s> %2$s</label><br>', checked( $settings['alerts'], true, false ), esc_html__( 'Email when a license expires or a plugin stops getting updates', 'axle-license-tracker' ) );
 		printf( '<label for="alc-digest"><input type="checkbox" id="alc-digest" name="digest" value="1"%1$s> %2$s</label>', checked( $settings['digest'], true, false ), esc_html__( 'Send a monthly digest of every license', 'axle-license-tracker' ) );
 		echo '</fieldset></td></tr>';
-		echo '</tbody></table>';
+		echo '</tbody></table></section>';
 		submit_button( __( 'Save settings', 'axle-license-tracker' ) );
 		echo '</form>';
 	}

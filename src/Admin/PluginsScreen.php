@@ -107,7 +107,7 @@ class PluginsScreen implements Service {
 		}
 
 		return sprintf(
-			'<span class="alc-pills"><a href="%1$s" class="alc-pill-link">%2$s</a> %3$s</span>',
+			'<span class="axle-ui alc-pills"><a href="%1$s" class="alc-pill-link">%2$s</a> %3$s</span>',
 			esc_url( Page::url( array( 'edit' => $id ) ) ),
 			Display::state( $row['state'] ),
 			Display::risk( $row['risk'] )
