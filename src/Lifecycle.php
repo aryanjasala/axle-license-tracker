@@ -35,6 +35,7 @@ final class Lifecycle {
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( self::DAILY );
 		wp_clear_scheduled_hook( self::SCAN );
+		wp_clear_scheduled_hook( Hub\Hub::CRON );
 	}
 
 	/**

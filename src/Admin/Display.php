@@ -61,14 +61,14 @@ final class Display {
 	 * How old a state is: "as of 3 days ago" from the vendor, "first read 3 days ago" otherwise.
 	 *
 	 * @param array $row Row.
-	 * @return string Plain text.
+	 * @return string HTML, escaped.
 	 */
 	public static function age( array $row ): string {
-		$ago = human_time_diff( (int) $row['as_of'], time() );
-		/* translators: %s: time span, such as 3 days. */
-		$text = 'vendor' === $row['as_of_source'] ? sprintf( __( 'as of %s ago', 'axle-license-tracker' ), $ago ) : sprintf( __( 'first read %s ago', 'axle-license-tracker' ), $ago );
+		$when = AxleUi::relative_time( (int) $row['as_of'] );
+		/* translators: %s: when, such as "3 days ago". */
+		$text = 'vendor' === $row['as_of_source'] ? sprintf( esc_html__( 'as of %s', 'axle-license-tracker' ), $when ) : sprintf( esc_html__( 'first read %s', 'axle-license-tracker' ), $when );
 		if ( $row['stale'] ) {
-			$text .= ', ' . __( 'vendor cache expired', 'axle-license-tracker' );
+			$text .= ', ' . esc_html__( 'vendor cache expired', 'axle-license-tracker' );
 		}
 
 		return $text;

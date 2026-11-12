@@ -94,12 +94,10 @@ class DashboardWidget implements Service {
 			echo '<ul>';
 			foreach ( $upcoming as $row ) {
 				printf(
-					'<li><a href="%1$s">%2$s</a> <span class="alc-muted">%3$s, %4$s</span>%5$s</li>',
+					'<li><a href="%1$s">%2$s</a> <span class="alc-muted">%3$s</span>%4$s</li>',
 					esc_url( Page::url( array( 'edit' => $row['id'] ) ) ),
 					esc_html( $row['name'] ),
-					esc_html( $row['renewal'] ),
-					/* translators: %d: number of days. */
-					esc_html( sprintf( _n( 'in %d day', 'in %d days', (int) $row['days_left'], 'axle-license-tracker' ), (int) $row['days_left'] ) ),
+					Parts::date( $row['renewal'] ), // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in date().
 					null !== $row['cost'] ? ' ' . Display::cost( $row['cost'], $row['currency'] ) : '' // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 				);
 			}

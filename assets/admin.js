@@ -8,6 +8,10 @@
  *   an array of { key, label, url }. row is { id, state, risk, vendor }.
  * - filter axleLicenseTracker.costFormat( text, minor, currency ): how a cost is shown.
  * - action axleLicenseTracker.detailsSaved( component, fields ): after details were saved.
+ * - filter axleLicenseTracker.announce( text, kind ): the sentence read out to screen readers
+ *   after an action (kind is notice, busy or copied).
+ * - action axleLicenseTracker.confirmOpened( id ) and axleLicenseTracker.confirmClosed( id ):
+ *   when an in-place confirm step opens or closes.
  */
 ( function () {
 	'use strict';
@@ -95,10 +99,121 @@
 		}
 	}
 
+	function text( key, fallback ) {
+		var config = window.axleLicenseTracker || {};
+		return config.i18n && config.i18n[ key ] ? config.i18n[ key ] : fallback;
+	}
+
+	function announce( message, kind ) {
+		if ( ! message || ! window.wp || ! window.wp.a11y ) {
+			return;
+		}
+		var h = hooks();
+		var final = h ? String( h.applyFilters( 'axleLicenseTracker.announce', message, kind ) ) : message;
+		window.wp.a11y.speak( final, 'assertive' );
+	}
+
+	/** Reads the notice that says what just happened. */
+	function notices() {
+		var notice = document.querySelector( '.alc-notice' );
+		if ( notice ) {
+			announce( notice.textContent.replace( /\s+/g, ' ' ).trim(), 'notice' );
+		}
+	}
+
+	/**
+	 * In-place confirm steps. Without JavaScript the step is simply shown and
+	 * the trigger hidden; here the step starts closed and opens on the trigger.
+	 */
+	function confirms() {
+		var h = hooks();
+		document.querySelectorAll( '.alc-confirm' ).forEach( function ( box ) {
+			var trigger = document.querySelector( '[data-alc-confirm="' + box.id + '"]' );
+			var cancel = box.querySelector( '[data-alc-confirm-cancel]' );
+			if ( ! trigger || ! cancel ) {
+				return;
+			}
+			trigger.hidden = false;
+			cancel.hidden = false;
+			box.hidden = true;
+
+			trigger.addEventListener( 'click', function () {
+				box.hidden = false;
+				trigger.setAttribute( 'aria-expanded', 'true' );
+				box.focus();
+				if ( h ) {
+					h.doAction( 'axleLicenseTracker.confirmOpened', box.id );
+				}
+			} );
+			cancel.addEventListener( 'click', function () {
+				box.hidden = true;
+				trigger.setAttribute( 'aria-expanded', 'false' );
+				trigger.focus();
+				if ( h ) {
+					h.doAction( 'axleLicenseTracker.confirmClosed', box.id );
+				}
+			} );
+			box.addEventListener( 'keydown', function ( event ) {
+				if ( 'Escape' === event.key ) {
+					cancel.click();
+				}
+			} );
+		} );
+	}
+
+	/** A form that fetches other sites takes a while: show it is working. */
+	function busyForms() {
+		document.querySelectorAll( 'form[data-alc-busy]' ).forEach( function ( form ) {
+			form.addEventListener( 'submit', function () {
+				var spinner = form.querySelector( '.spinner' );
+				if ( spinner ) {
+					spinner.classList.add( 'is-active' );
+				}
+				form.querySelectorAll( 'button[type="submit"]' ).forEach( function ( button ) {
+					button.setAttribute( 'aria-busy', 'true' );
+					// Disabling at once would drop the button from the submission in some browsers.
+					window.setTimeout( function () {
+						button.disabled = true;
+					}, 0 );
+				} );
+				announce( form.getAttribute( 'data-alc-busy' ), 'busy' );
+			} );
+		} );
+	}
+
+	/** Copy buttons for the calendar link. */
+	function copyButtons() {
+		document.querySelectorAll( '[data-alc-copy]' ).forEach( function ( button ) {
+			var field = document.getElementById( button.getAttribute( 'data-alc-copy' ) );
+			if ( ! field ) {
+				return;
+			}
+			button.hidden = false;
+			button.addEventListener( 'click', function () {
+				field.focus();
+				field.select();
+				var done = function () {
+					announce( text( 'copied', 'Link copied.' ), 'copied' );
+				};
+				if ( navigator.clipboard && navigator.clipboard.writeText ) {
+					navigator.clipboard.writeText( field.value ).then( done, function () {
+						announce( text( 'copyFailed', 'Could not copy. Select the link and copy it by hand.' ), 'copied' );
+					} );
+				} else {
+					announce( text( 'copyFailed', 'Could not copy. Select the link and copy it by hand.' ), 'copied' );
+				}
+			} );
+		} );
+	}
+
 	function init() {
 		costs();
 		rowActions();
 		saved();
+		notices();
+		confirms();
+		busyForms();
+		copyButtons();
 	}
 
 	if ( 'loading' === document.readyState ) {

@@ -15,6 +15,15 @@ function axle_license_tracker_uninstall_site(): void {
 
 	delete_option( 'axle_license_tracker_settings' );
 	delete_option( 'axle_license_tracker_detection' );
+	delete_option( 'axle_license_tracker_hub_sites' );
+	delete_option( 'axle_license_tracker_feed' );
+
+	// What each remote site in the hub reported: one option per site.
+	// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-off cleanup on uninstall.
+	$wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( 'axle_license_tracker_hub_data_' ) . '%' ) );
+
+	// Each person's "Get started" choice.
+	delete_metadata( 'user', 0, 'axle_license_tracker_steps_dismissed', '', true );
 
 	// One record per tracked component; wp_delete_post() takes its meta too.
 	do {
@@ -37,6 +46,7 @@ function axle_license_tracker_uninstall_site(): void {
 
 	wp_clear_scheduled_hook( 'axle_license_tracker_daily' );
 	wp_clear_scheduled_hook( 'axle_license_tracker_scan' );
+	wp_clear_scheduled_hook( 'axle_license_tracker_hub_sync' );
 
 	remove_role( 'axle_license_reporter' );
 	foreach ( wp_roles()->role_objects as $axle_license_tracker_role ) {

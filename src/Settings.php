@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
 
 /**
  * The axle_license_tracker_settings option: reminder days, extra recipients,
- * alerts and the monthly digest.
+ * alerts, the monthly digest and whether this site is a hub.
  */
 final class Settings {
 
@@ -20,7 +20,7 @@ final class Settings {
 	/**
 	 * Defaults.
 	 *
-	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool}
+	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool, hub: bool}
 	 */
 	public static function defaults(): array {
 		return array(
@@ -28,13 +28,14 @@ final class Settings {
 			'recipients'    => array(),
 			'alerts'        => true,
 			'digest'        => false,
+			'hub'           => false,
 		);
 	}
 
 	/**
 	 * All settings, with defaults for anything missing.
 	 *
-	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool}
+	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool, hub: bool}
 	 */
 	public function all(): array {
 		return self::sanitize( get_option( self::OPTION, array() ) );
@@ -69,7 +70,7 @@ final class Settings {
 	 * Cleans settings from a form, an option or a command.
 	 *
 	 * @param mixed $raw Raw settings.
-	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool}
+	 * @return array{reminder_days: int[], recipients: string[], alerts: bool, digest: bool, hub: bool}
 	 */
 	public static function sanitize( $raw ): array {
 		$defaults = self::defaults();
@@ -94,6 +95,7 @@ final class Settings {
 			'recipients'    => array_slice( $recipients, 0, 20 ),
 			'alerts'        => isset( $raw['alerts'] ) ? (bool) $raw['alerts'] : $defaults['alerts'],
 			'digest'        => isset( $raw['digest'] ) ? (bool) $raw['digest'] : $defaults['digest'],
+			'hub'           => isset( $raw['hub'] ) ? (bool) $raw['hub'] : $defaults['hub'],
 		);
 	}
 

@@ -60,6 +60,17 @@ final class Messages {
 			'invalid'              => __( 'Nothing was saved. Fix the fields marked below.', 'axle-license-tracker' ),
 			'not_found'            => __( 'That component is not installed on this site.', 'axle-license-tracker' ),
 			'no_premium'           => __( 'No premium plugins or themes found. Directory plugins get their updates from WordPress.org and need no license.', 'axle-license-tracker' ),
+			'steps_dismissed'      => __( 'The Get started card is hidden.', 'axle-license-tracker' ),
+			// Hub.
+			'hub_on'               => __( 'The hub is on. Add a site below, or use the sites you already added.', 'axle-license-tracker' ),
+			'hub_off'              => __( 'The hub is off. Your sites and what they reported are kept, and nothing is fetched until you turn it on again.', 'axle-license-tracker' ),
+			'site_not_found'       => __( 'That site is not in the hub any more.', 'axle-license-tracker' ),
+			// Calendar feed.
+			'feed_on'              => __( 'The calendar feed is on. Copy the link below into your calendar app.', 'axle-license-tracker' ),
+			'feed_saved'           => __( 'Calendar feed settings saved.', 'axle-license-tracker' ),
+			'feed_regenerated'     => __( 'The link is new. Subscribe your calendars to it again. The old link no longer works.', 'axle-license-tracker' ),
+			'feed_off'             => __( 'The calendar feed is off. Its link no longer works.', 'axle-license-tracker' ),
+			'feed_unknown'         => __( 'Nothing was changed. Turn the feed on first.', 'axle-license-tracker' ),
 			'gpl_club'             => __( 'Builds from GPL clubs and resellers usually get no official updates.', 'axle-license-tracker' ),
 		);
 

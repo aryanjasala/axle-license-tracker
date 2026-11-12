@@ -10,6 +10,8 @@ namespace AryanX\Axle\LicenseTracker\Cli;
 use AryanX\Axle\LicenseTracker\Abilities;
 use AryanX\Axle\LicenseTracker\Details;
 use AryanX\Axle\LicenseTracker\Export;
+use AryanX\Axle\LicenseTracker\Forecast;
+use AryanX\Axle\LicenseTracker\Hub\Hub;
 use AryanX\Axle\LicenseTracker\Reminders;
 use AryanX\Axle\LicenseTracker\Report;
 use AryanX\Axle\LicenseTracker\Tracker;
@@ -55,18 +57,27 @@ final class Command {
 	private Export $export;
 
 	/**
+	 * The hub.
+	 *
+	 * @var Hub
+	 */
+	private Hub $hub;
+
+	/**
 	 * Sets up the command.
 	 *
 	 * @param Tracker   $tracker   Rows.
 	 * @param Details   $details   Manual details.
 	 * @param Reminders $reminders Reminders.
 	 * @param Export    $export    Exports.
+	 * @param Hub       $hub       The hub.
 	 */
-	public function __construct( Tracker $tracker, Details $details, Reminders $reminders, Export $export ) {
+	public function __construct( Tracker $tracker, Details $details, Reminders $reminders, Export $export, Hub $hub ) {
 		$this->tracker   = $tracker;
 		$this->details   = $details;
 		$this->reminders = $reminders;
 		$this->export    = $export;
+		$this->hub       = $hub;
 	}
 
 	/**
@@ -220,6 +231,60 @@ final class Command {
 			$assoc_args,
 			array( 'id', 'name', 'state', 'renewal', 'days_left', 'cost', 'currency', 'owner' )
 		);
+	}
+
+	/**
+	 * What the next months of renewals will cost, per month, vendor and currency.
+	 *
+	 * One-off and lifetime items, items without a cost and items without a
+	 * usable renewal date are listed apart. Currencies are never converted.
+	 *
+	 * ## OPTIONS
+	 *
+	 * [--months=<months>]
+	 * : Months ahead, 1 to 24. Default 12.
+	 *
+	 * [--sites]
+	 * : Also count the remote sites of the hub.
+	 *
+	 * [--format=<format>]
+	 * : table, csv, json or yaml. Default table.
+	 *
+	 * ## EXAMPLES
+	 *
+	 *     wp axle-license-tracker costs --format=csv > renewals.csv
+	 *
+	 * @param array $args       Positional arguments.
+	 * @param array $assoc_args Named arguments.
+	 */
+	public function costs( $args, $assoc_args ): void {
+		unset( $args );
+		$remote   = ! empty( $assoc_args['sites'] ) && $this->hub->enabled();
+		$forecast = Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), gmdate( 'Y-m-d' ), (int) ( $assoc_args['months'] ?? 12 ) );
+		$format   = (string) ( $assoc_args['format'] ?? 'table' );
+
+		if ( 'csv' === $format ) {
+			\WP_CLI::line( rtrim( Forecast::csv( $forecast ) ) );
+			return;
+		}
+		if ( 'json' === $format || 'yaml' === $format ) {
+			\WP_CLI::print_value( $forecast, array( 'format' => $format ) );
+			return;
+		}
+
+		$items = array();
+		foreach ( $forecast['months'] as $month => $data ) {
+			foreach ( $data['totals'] as $currency => $minor ) {
+				$items[] = array(
+					'month'    => $month,
+					'currency' => $currency,
+					'amount'   => Details::from_minor( (int) $minor, (string) $currency ),
+					'charges'  => count( $data['items'] ),
+				);
+			}
+		}
+		\WP_CLI\Utils\format_items( 'table', $items, array( 'month', 'currency', 'amount', 'charges' ) );
+		\WP_CLI::log( sprintf( 'Not counted: %d one-off or lifetime, %d without a cost, %d without a usable renewal date.', count( $forecast['one_off'] ), count( $forecast['unknown_cost'] ), count( $forecast['no_date'] ) ) );
 	}
 
 	/**

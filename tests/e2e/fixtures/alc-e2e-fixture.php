@@ -9,6 +9,15 @@
 // Application passwords on the plain HTTP test site.
 add_filter( 'wp_is_application_passwords_available', '__return_true' );
 
+// The hub refuses http and loopback addresses. The tests use this same site as a remote one over
+// http://localhost, so the filter is on unless a test sets the option to 0.
+add_filter(
+	'axle_license_tracker_hub_allow_private',
+	static function () {
+		return '0' !== (string) get_option( 'alc_fixture_allow_private', '1' );
+	}
+);
+
 // Keep every email in an option instead of sending it.
 add_filter(
 	'pre_wp_mail',

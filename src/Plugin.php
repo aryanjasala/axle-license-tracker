@@ -7,11 +7,18 @@
 
 namespace AryanX\Axle\LicenseTracker;
 
+use AryanX\Axle\LicenseTracker\Admin\CostsScreen;
 use AryanX\Axle\LicenseTracker\Admin\DashboardWidget;
+use AryanX\Axle\LicenseTracker\Admin\HubScreen;
 use AryanX\Axle\LicenseTracker\Admin\Page;
 use AryanX\Axle\LicenseTracker\Admin\PluginsScreen;
 use AryanX\Axle\LicenseTracker\Cli\Command;
+use AryanX\Axle\LicenseTracker\Cli\FeedCommand;
+use AryanX\Axle\LicenseTracker\Cli\HubCommand;
 use AryanX\Axle\LicenseTracker\Health\SiteHealth;
+use AryanX\Axle\LicenseTracker\Hub\Hub;
+use AryanX\Axle\LicenseTracker\Hub\Remote;
+use AryanX\Axle\LicenseTracker\Hub\Sites;
 use AryanX\Axle\LicenseTracker\Rest\ReportController;
 
 defined( 'ABSPATH' ) || exit;
@@ -106,6 +113,20 @@ final class Plugin {
 	private Export $export;
 
 	/**
+	 * The hub.
+	 *
+	 * @var Hub
+	 */
+	private Hub $hub;
+
+	/**
+	 * The calendar feed.
+	 *
+	 * @var Calendar
+	 */
+	private Calendar $calendar;
+
+	/**
 	 * Starts the plugin. Runs on `plugins_loaded`.
 	 */
 	public static function boot(): void {
@@ -152,6 +173,9 @@ final class Plugin {
 		$this->report    = new Report( $this->tracker );
 		$this->reminders = new Reminders( $this->tracker, $this->licenses, $this->settings, $this->store );
 		$this->export    = new Export( $this->report );
+		$sites           = new Sites();
+		$this->hub       = new Hub( $this->settings, $sites, new Remote( $sites ), $this->tracker );
+		$this->calendar  = new Calendar( $this->tracker, $this->hub );
 	}
 
 	/**
@@ -173,22 +197,37 @@ final class Plugin {
 	}
 
 	/**
+	 * The hub, for other plugins.
+	 *
+	 * @return Hub
+	 */
+	public function hub(): Hub {
+		return $this->hub;
+	}
+
+	/**
 	 * Registers the services.
 	 */
 	private function register(): void {
-		$services = array(
+		$hub_screen   = new HubScreen( $this->hub );
+		$costs_screen = new CostsScreen( $this->hub, $this->calendar );
+		$services     = array(
 			$this->inventory,
 			$this->updates,
 			$this->scanner,
 			$this->licenses,
 			$this->reminders,
 			new Privacy( $this->licenses ),
-			new Page( $this->tracker, $this->details, $this->settings, $this->export ),
+			$this->hub,
+			$this->calendar,
+			$hub_screen,
+			$costs_screen,
+			new Page( $this->tracker, $this->details, $this->settings, $this->export, $this->hub, $hub_screen, $costs_screen ),
 			new PluginsScreen( $this->tracker ),
 			new DashboardWidget( $this->tracker ),
-			new SiteHealth( $this->tracker ),
+			new SiteHealth( $this->tracker, $this->hub ),
 			new ReportController( $this->report ),
-			new Abilities( $this->tracker, $this->report, $this->details ),
+			new Abilities( $this->tracker, $this->report, $this->details, $this->hub ),
 		);
 
 		foreach ( $services as $service ) {
@@ -200,7 +239,9 @@ final class Plugin {
 		add_action( 'activated_plugin', array( $this->scanner, 'schedule' ) );
 
 		if ( defined( 'WP_CLI' ) && WP_CLI ) {
-			\WP_CLI::add_command( 'axle-license-tracker', new Command( $this->tracker, $this->details, $this->reminders, $this->export ) );
+			\WP_CLI::add_command( 'axle-license-tracker', new Command( $this->tracker, $this->details, $this->reminders, $this->export, $this->hub ) );
+			\WP_CLI::add_command( 'axle-license-tracker hub', new HubCommand( $this->hub ) );
+			\WP_CLI::add_command( 'axle-license-tracker feed', new FeedCommand( $this->calendar ) );
 		}
 	}
 }

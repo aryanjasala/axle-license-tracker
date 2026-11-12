@@ -10,6 +10,7 @@ namespace AryanX\Axle\LicenseTracker\Admin;
 use AryanX\Axle\LicenseTracker\Capability;
 use AryanX\Axle\LicenseTracker\Details;
 use AryanX\Axle\LicenseTracker\Export;
+use AryanX\Axle\LicenseTracker\Hub\Hub;
 use AryanX\Axle\LicenseTracker\Messages;
 use AryanX\Axle\LicenseTracker\Service;
 use AryanX\Axle\LicenseTracker\Settings;
@@ -28,6 +29,8 @@ defined( 'ABSPATH' ) || exit;
 class Page implements Service {
 
 	public const SLUG = 'axle-license-tracker';
+
+	public const STEPS_META = 'axle_license_tracker_steps_dismissed';
 
 	/**
 	 * Rows.
@@ -58,18 +61,45 @@ class Page implements Service {
 	private Export $export;
 
 	/**
+	 * The hub.
+	 *
+	 * @var Hub
+	 */
+	private Hub $hub;
+
+	/**
+	 * The Sites tab.
+	 *
+	 * @var HubScreen
+	 */
+	private HubScreen $hub_screen;
+
+	/**
+	 * The Costs tab.
+	 *
+	 * @var CostsScreen
+	 */
+	private CostsScreen $costs_screen;
+
+	/**
 	 * Sets up the screen.
 	 *
-	 * @param Tracker  $tracker  Rows.
-	 * @param Details  $details  Manual details.
-	 * @param Settings $settings Settings.
-	 * @param Export   $export   Exports.
+	 * @param Tracker     $tracker      Rows.
+	 * @param Details     $details      Manual details.
+	 * @param Settings    $settings     Settings.
+	 * @param Export      $export       Exports.
+	 * @param Hub         $hub          The hub.
+	 * @param HubScreen   $hub_screen   The Sites tab.
+	 * @param CostsScreen $costs_screen The Costs tab.
 	 */
-	public function __construct( Tracker $tracker, Details $details, Settings $settings, Export $export ) {
-		$this->tracker  = $tracker;
-		$this->details  = $details;
-		$this->settings = $settings;
-		$this->export   = $export;
+	public function __construct( Tracker $tracker, Details $details, Settings $settings, Export $export, Hub $hub, HubScreen $hub_screen, CostsScreen $costs_screen ) {
+		$this->tracker      = $tracker;
+		$this->details      = $details;
+		$this->settings     = $settings;
+		$this->export       = $export;
+		$this->hub          = $hub;
+		$this->hub_screen   = $hub_screen;
+		$this->costs_screen = $costs_screen;
 	}
 
 	/**
@@ -83,6 +113,7 @@ class Page implements Service {
 		add_action( 'admin_post_axle_license_tracker_ignore', array( $this, 'handle_ignore' ) );
 		add_action( 'admin_post_axle_license_tracker_settings', array( $this, 'handle_settings' ) );
 		add_action( 'admin_post_axle_license_tracker_export', array( $this, 'handle_export' ) );
+		add_action( 'admin_post_axle_license_tracker_dismiss_steps', array( $this, 'handle_dismiss_steps' ) );
 		add_filter( 'plugin_action_links_' . plugin_basename( PLUGIN_FILE ), array( $this, 'action_links' ) );
 	}
 
@@ -100,13 +131,88 @@ class Page implements Service {
 	 * Adds Plugins > Licenses.
 	 */
 	public function menu(): void {
-		add_plugins_page(
+		$hook = add_plugins_page(
 			__( 'Licenses', 'axle-license-tracker' ),
 			__( 'Licenses', 'axle-license-tracker' ),
 			Capability::manage(),
 			self::SLUG,
 			array( $this, 'render' )
 		);
+		if ( $hook ) {
+			add_action( 'load-' . $hook, array( $this, 'help' ) );
+		}
+	}
+
+	/**
+	 * The Help tab: an Overview, and one short tab for each job of the screen that is showing.
+	 */
+	public function help(): void {
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended -- Reading which view to describe.
+		$tab  = isset( $_GET['tab'] ) ? sanitize_key( wp_unslash( $_GET['tab'] ) ) : '';
+		$edit = isset( $_GET['edit'] ) && '' !== $_GET['edit'];
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		$tabs = array(
+			array(
+				'id'      => 'overview',
+				'title'   => __( 'Overview', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'This screen shows which premium plugins and themes need a license, what state each license is in, and when each one renews. It reads the license data your plugins already store. It never sends a license key anywhere and never uses a seat.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Use the tabs for the cost of the next 12 months, for the licenses of other sites, and for reminder settings.', 'axle-license-tracker' ) . '</p>',
+			),
+		);
+
+		if ( $edit ) {
+			$tabs[] = array(
+				'id'      => 'details',
+				'title'   => __( 'Editing details', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Add what detection cannot know: the renewal date, the cost, who owns the license and who gets reminders. What you enter wins over what was detected. Leave a field empty to use the detected value.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Costs are saved in the currency you choose and are never converted.', 'axle-license-tracker' ) . '</p>',
+			);
+		} elseif ( 'costs' === $tab ) {
+			$tabs[] = array(
+				'id'      => 'costs',
+				'title'   => __( 'Twelve-month costs', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Each license with a renewal date, a cost and a currency is placed in the month it renews. A monthly license counts every month. Totals are kept per currency and are never converted.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Items that cannot be added up, such as one without a cost, are listed under the table so nothing is hidden.', 'axle-license-tracker' ) . '</p>',
+			);
+			$tabs[] = array(
+				'id'      => 'calendar',
+				'title'   => __( 'Calendar feed', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'The feed is a private link your calendar app can subscribe to. It lists renewal dates with the product, vendor and cost. It never contains keys or fingerprints.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Anyone with the link can read it. If the link leaks, make a new one: the old one stops working at once.', 'axle-license-tracker' ) . '</p>',
+			);
+		} elseif ( 'sites' === $tab ) {
+			$tabs[] = array(
+				'id'      => 'hub',
+				'title'   => __( 'The hub', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'The hub reads the license report of each site you add, about once a day, and shows everything together. It only reads. It never changes anything on those sites.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'A site that cannot be reached is tried again later and later. Its row says why, and what to do.', 'axle-license-tracker' ) . '</p>',
+			);
+			$tabs[] = array(
+				'id'      => 'logins',
+				'title'   => __( 'Logins and safety', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Each site needs a user with the License reporter role and an application password. The role can read the report and nothing else.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Passwords are stored encrypted with a key made from this site\'s salts and are never shown again. Only https addresses are allowed, and not addresses inside a private network.', 'axle-license-tracker' ) . '</p>',
+			);
+		} elseif ( 'settings' === $tab ) {
+			$tabs[] = array(
+				'id'      => 'reminders',
+				'title'   => __( 'Reminders', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Choose how many days before a renewal an email goes out. Each reminder is sent once. The site admin and the owner email of each license always get them.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'You can also be emailed when a license expires or an update is blocked, and get a monthly digest.', 'axle-license-tracker' ) . '</p>',
+			);
+		} else {
+			$tabs[] = array(
+				'id'      => 'states',
+				'title'   => __( 'License states', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Valid means the vendor says the license is active. Expiring means it renews within your reminder window. Expired, invalid and no key mean updates are probably not arriving.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Each state says how old that information is. Unknown means no reader knows that vendor, so add the renewal date by hand.', 'axle-license-tracker' ) . '</p>',
+			);
+			$tabs[] = array(
+				'id'      => 'risk',
+				'title'   => __( 'Update risk', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Update blocked means a newer version exists but this site cannot download it. At risk means the vendor knows a newer version the site is not offered, or the updater has been silent for 30 days. Watch means the version has not changed for 180 days.', 'axle-license-tracker' ) . '</p>',
+			);
+			$tabs[] = array(
+				'id'      => 'export',
+				'title'   => __( 'Export and ignore', 'axle-license-tracker' ),
+				'content' => '<p>' . esc_html__( 'Download the list as CSV or JSON. License keys are never included, only a fingerprint.', 'axle-license-tracker' ) . '</p><p>' . esc_html__( 'Ignore a component that needs no license. It stays in the list but gets no reminders and does not count in the totals. You can stop ignoring it at any time.', 'axle-license-tracker' ) . '</p>',
+			);
+		}
+
+		AxleUi::help_tabs( $tabs );
 	}
 
 	/**
@@ -142,7 +248,7 @@ class Page implements Service {
 			return;
 		}
 
-		wp_enqueue_script( 'axle-license-tracker', $url . 'admin.js', array( 'wp-hooks' ), VERSION, true );
+		wp_enqueue_script( 'axle-license-tracker', $url . 'admin.js', array( 'wp-hooks', 'wp-a11y' ), VERSION, true );
 		$saved = null;
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only reads which notice to show.
 		if ( isset( $_GET['alc_notice'], $_GET['edit'] ) && 'saved' === sanitize_key( wp_unslash( $_GET['alc_notice'] ) ) ) {
@@ -161,6 +267,10 @@ class Page implements Service {
 			array(
 				'saved'  => $saved,
 				'locale' => str_replace( '_', '-', get_user_locale() ),
+				'i18n'   => array(
+					'copied'     => __( 'Link copied.', 'axle-license-tracker' ),
+					'copyFailed' => __( 'Could not copy. Select the link and copy it by hand.', 'axle-license-tracker' ),
+				),
 			)
 		);
 	}
@@ -184,6 +294,12 @@ class Page implements Service {
 		} elseif ( 'settings' === $tab ) {
 			$this->render_header( 'settings' );
 			$this->render_settings();
+		} elseif ( 'costs' === $tab ) {
+			$this->render_header( 'costs' );
+			$this->costs_screen->render();
+		} elseif ( 'sites' === $tab ) {
+			$this->render_header( 'sites' );
+			$this->hub_screen->render();
 		} else {
 			// Records and the stored state follow what is installed now.
 			$this->tracker->sync();
@@ -197,7 +313,7 @@ class Page implements Service {
 	/**
 	 * Title, notice and tabs.
 	 *
-	 * @param string $current licenses or settings.
+	 * @param string $current licenses, costs, sites or settings.
 	 */
 	private function render_header( string $current ): void {
 		echo '<h1 class="wp-heading-inline">' . esc_html__( 'Licenses', 'axle-license-tracker' ) . '</h1>';
@@ -211,7 +327,7 @@ class Page implements Service {
 				echo '<span class="axle-status"><span class="axle-badge axle-badge--good">' . esc_html__( 'All licenses fine', 'axle-license-tracker' ) . '</span></span>';
 			}
 			printf( '<form method="post" action="%s" class="alc-inline-form"><input type="hidden" name="action" value="axle_license_tracker_recheck">', esc_url( admin_url( 'admin-post.php' ) ) );
-			wp_nonce_field( 'axle_license_tracker_recheck' );
+			Parts::nonce( 'axle_license_tracker_recheck' );
 			printf( '<button type="submit" class="page-title-action">%s</button></form>', esc_html__( 'Check again', 'axle-license-tracker' ) );
 		}
 		echo '<hr class="wp-header-end">';
@@ -220,7 +336,9 @@ class Page implements Service {
 		echo '<nav class="nav-tab-wrapper" aria-label="' . esc_attr__( 'License screens', 'axle-license-tracker' ) . '">';
 		foreach ( array(
 			'licenses' => array( __( 'Licenses', 'axle-license-tracker' ), self::url() ),
-			'settings' => array( __( 'Reminders', 'axle-license-tracker' ), self::url( array( 'tab' => 'settings' ) ) ),
+			'costs'    => array( __( 'Costs', 'axle-license-tracker' ), self::url( array( 'tab' => 'costs' ) ) ),
+			'sites'    => array( __( 'Sites', 'axle-license-tracker' ), self::url( array( 'tab' => 'sites' ) ) ),
+			'settings' => array( __( 'Settings', 'axle-license-tracker' ), self::url( array( 'tab' => 'settings' ) ) ),
 		) as $key => $tab ) {
 			printf(
 				'<a href="%1$s" class="nav-tab%2$s"%3$s>%4$s</a>',
@@ -233,8 +351,8 @@ class Page implements Service {
 		echo '</nav>';
 		if ( 'licenses' === $current ) {
 			echo '<p class="axle-intro">' . esc_html__( 'Shows which premium plugins and themes need a license, when each one renews, and whether updates are still arriving.', 'axle-license-tracker' ) . '</p>';
-		} else {
-			echo '<p class="axle-intro">' . esc_html__( 'Choose when renewal reminders go out and who gets them.', 'axle-license-tracker' ) . '</p>';
+		} elseif ( 'settings' === $current ) {
+			echo '<p class="axle-intro">' . esc_html__( 'Choose when renewal reminders go out and who gets them, and whether this site is a hub for other sites.', 'axle-license-tracker' ) . '</p>';
 		}
 	}
 
@@ -244,11 +362,39 @@ class Page implements Service {
 	private function render_notice(): void {
 		// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only picks a fixed message.
 		$notice = isset( $_GET['alc_notice'] ) ? sanitize_key( wp_unslash( $_GET['alc_notice'] ) ) : '';
-		if ( ! in_array( $notice, array( 'saved', 'rechecked', 'ignored', 'unignored', 'settings', 'invalid', 'not_found' ), true ) ) {
+		$undo   = '';
+		if ( 'custom' === $notice ) {
+			$custom = Parts::pull_notice();
+			if ( ! $custom ) {
+				return;
+			}
+			$type = $custom['type'];
+			$text = $custom['text'];
+			$undo = $custom['undo'];
+		} elseif ( in_array( $notice, array( 'saved', 'rechecked', 'ignored', 'unignored', 'settings', 'invalid', 'not_found' ), true ) ) {
+			$type = in_array( $notice, array( 'invalid', 'not_found' ), true ) ? 'error' : 'success';
+			$text = Messages::get( $notice );
+			// Ignoring can be undone from the notice.
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Only builds a link that carries its own nonce.
+			$component = 'ignored' === $notice && isset( $_GET['alc_c'] ) ? sanitize_text_field( wp_unslash( $_GET['alc_c'] ) ) : '';
+			if ( '' !== $component && $this->tracker->row( $component ) ) {
+				$undo = wp_nonce_url(
+					add_query_arg(
+						array(
+							'action'    => 'axle_license_tracker_ignore',
+							'component' => $component,
+							'ignore'    => 0,
+						),
+						admin_url( 'admin-post.php' ) 
+					),
+					'axle_license_tracker_ignore' 
+				);
+			}
+		} else {
 			return;
 		}
-		$type = in_array( $notice, array( 'invalid', 'not_found' ), true ) ? 'error' : 'success';
-		printf( '<div class="notice notice-%1$s is-dismissible alc-notice" role="status"><p>%2$s</p></div>', esc_attr( $type ), esc_html( Messages::get( $notice ) ) );
+
+		printf( '<div class="notice notice-%1$s is-dismissible alc-notice" role="status"><p>%2$s%3$s</p></div>', esc_attr( $type ), esc_html( $text ), '' !== $undo ? ' <a href="' . esc_url( $undo ) . '" class="alc-undo">' . esc_html__( 'Undo', 'axle-license-tracker' ) . '</a>' : '' );
 	}
 
 	/**
@@ -268,6 +414,7 @@ class Page implements Service {
 		$totals  = Tracker::totals( $tracked );
 		$window  = max( $this->tracker->reminder_days() );
 
+		$this->render_steps( $tracked );
 		$this->render_tiles( $totals, $window );
 
 		$rows = 'all' === $view ? $all : $tracked;
@@ -306,12 +453,18 @@ class Page implements Service {
 		$this->render_filters( 'all' === $view ? $all : $tracked, $filters, $view );
 
 		if ( ! $rows ) {
-			echo '<div class="axle-empty alc-empty"><p>' . esc_html( $tracked || array_filter( $filters ) ? __( 'Nothing matches these filters.', 'axle-license-tracker' ) : Messages::get( 'no_premium' ) ) . '</p></div>';
+			echo '<div class="axle-empty alc-empty"><p>' . esc_html( array_filter( $filters ) ? __( 'Nothing matches these filters. Clear them to see every license.', 'axle-license-tracker' ) : Messages::get( 'no_premium' ) ) . '</p>';
+			if ( array_filter( $filters ) ) {
+				printf( '<a class="button" href="%s">%s</a>', esc_url( self::url( 'all' === $view ? array( 'view' => 'all' ) : array() ) ), esc_html__( 'Clear the filters', 'axle-license-tracker' ) );
+			} elseif ( 'all' !== $view ) {
+				printf( '<a class="button" href="%s">%s</a>', esc_url( self::url( array( 'view' => 'all' ) ) ), esc_html__( 'Show all plugins and themes', 'axle-license-tracker' ) );
+			}
+			echo '</div>';
 			$this->render_exports();
 			return;
 		}
 
-		echo '<table class="widefat striped alc-table"><caption class="screen-reader-text">' . esc_html__( 'Plugins and themes with their license state and update risk', 'axle-license-tracker' ) . '</caption><thead><tr>';
+		echo '<div class="axle-scroll" tabindex="0" role="region" aria-label="' . esc_attr__( 'Plugins and themes table', 'axle-license-tracker' ) . '"><table class="widefat striped alc-table"><caption class="screen-reader-text">' . esc_html__( 'Plugins and themes with their license state and update risk', 'axle-license-tracker' ) . '</caption><thead><tr>';
 		foreach ( array(
 			__( 'Plugin or theme', 'axle-license-tracker' ),
 			__( 'Type', 'axle-license-tracker' ),
@@ -328,9 +481,95 @@ class Page implements Service {
 		foreach ( $rows as $row ) {
 			$this->render_row( $row );
 		}
-		echo '</tbody></table>';
+		echo '</tbody></table></div>';
 
 		$this->render_exports();
+	}
+
+	/**
+	 * The "Get started" card: shown until every step is done or a person dismisses it.
+	 *
+	 * @param array<string, array> $tracked Tracked rows.
+	 */
+	private function render_steps( array $tracked ): void {
+		$user = get_current_user_id();
+		if ( get_user_meta( $user, self::STEPS_META, true ) ) {
+			return;
+		}
+
+		$first_open = '';
+		$has_dates  = false;
+		foreach ( $tracked as $row ) {
+			if ( ! $row['ignored'] && '' === $row['renewal'] && '' === $first_open ) {
+				$first_open = (string) $row['id'];
+			}
+			if ( 'manual' === ( $row['sources']['renewal'] ?? '' ) || null !== $row['cost'] ) {
+				$has_dates = true;
+			}
+		}
+		$steps = array(
+			array(
+				__( 'Check what was found', 'axle-license-tracker' ),
+				__( 'Premium plugins and themes are found from their updaters. Look at the list, and at all plugins and themes if one is missing.', 'axle-license-tracker' ),
+				(bool) $tracked,
+				self::url( array( 'view' => 'all' ) ),
+				__( 'Show all plugins and themes', 'axle-license-tracker' ),
+			),
+			array(
+				__( 'Add renewal dates and costs', 'axle-license-tracker' ),
+				__( 'Most vendors do not say when a license renews. Add the date and cost once, and you get reminders and a cost forecast.', 'axle-license-tracker' ),
+				$has_dates,
+				'' !== $first_open ? self::url( array( 'edit' => $first_open ) ) : self::url(),
+				__( 'Add details', 'axle-license-tracker' ),
+			),
+			array(
+				__( 'Choose who gets reminders', 'axle-license-tracker' ),
+				__( 'Reminders go to the site admin by default. Add the people who pay for renewals.', 'axle-license-tracker' ),
+				null !== get_option( Settings::OPTION, null ),
+				self::url( array( 'tab' => 'settings' ) ),
+				__( 'Open settings', 'axle-license-tracker' ),
+			),
+			array(
+				__( 'Look after more than one site?', 'axle-license-tracker' ),
+				__( 'Turn on the hub to see the licenses, renewals and costs of all your sites here. Skip this if you only have one site.', 'axle-license-tracker' ),
+				$this->hub->enabled(),
+				self::url( array( 'tab' => 'sites' ) ),
+				__( 'Set up the hub', 'axle-license-tracker' ),
+			),
+		);
+		$open  = array_filter(
+			$steps,
+			static function ( array $step ): bool {
+				return ! $step[2];
+			}
+		);
+		if ( ! $open ) {
+			return;
+		}
+
+		echo '<section class="axle-card alc-steps" aria-labelledby="alc-steps-title"><h2 class="axle-card__title" id="alc-steps-title">' . esc_html__( 'Get started', 'axle-license-tracker' ) . '</h2><ol class="axle-steps">';
+		foreach ( $steps as $step ) {
+			printf( '<li class="axle-step"><div class="axle-step__body"><strong class="axle-step__title">%1$s</strong><p>%2$s</p></div>', esc_html( $step[0] ), esc_html( $step[1] ) );
+			if ( $step[2] ) {
+				echo '<span class="axle-badge axle-badge--good">' . esc_html__( 'Done', 'axle-license-tracker' ) . '</span>';
+			} else {
+				printf( '<a class="button" href="%1$s">%2$s</a>', esc_url( $step[3] ), esc_html( $step[4] ) );
+			}
+			echo '</li>';
+		}
+		echo '</ol>';
+		printf( '<form method="post" action="%s" class="alc-steps-dismiss"><input type="hidden" name="action" value="axle_license_tracker_dismiss_steps">', Parts::post_url() ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in post_url().
+		Parts::nonce( 'axle_license_tracker_dismiss_steps' );
+		printf( '<button type="submit" class="button-link">%s</button></form></section>', esc_html__( 'Dismiss this card', 'axle-license-tracker' ) );
+	}
+
+	/**
+	 * Hides the "Get started" card for the current user.
+	 */
+	public function handle_dismiss_steps(): void {
+		$this->verify( 'axle_license_tracker_dismiss_steps' );
+		update_user_meta( get_current_user_id(), self::STEPS_META, 1 );
+		Parts::redirect( array(), 'success', Messages::get( 'steps_dismissed' ) );
 	}
 
 	/**
@@ -415,7 +654,7 @@ class Page implements Service {
 			}
 		}
 
-		echo '<form method="get" class="alc-filters"><input type="hidden" name="page" value="' . esc_attr( self::SLUG ) . '">';
+		echo '<form method="get" class="axle-toolbar alc-filters"><input type="hidden" name="page" value="' . esc_attr( self::SLUG ) . '">';
 		if ( 'all' === $view ) {
 			echo '<input type="hidden" name="view" value="all">';
 		}
@@ -425,9 +664,9 @@ class Page implements Service {
 			foreach ( $option['values'] as $value => $label ) {
 				printf( '<option value="%1$s"%2$s>%3$s</option>', esc_attr( (string) $value ), selected( $filters[ $key ], (string) $value, false ), esc_html( (string) $label ) );
 			}
-			echo '</select> ';
+			echo '</select>';
 		}
-		echo '<button type="submit" class="button">' . esc_html__( 'Filter', 'axle-license-tracker' ) . '</button></form>';
+		echo '<span class="axle-toolbar__end"><button type="submit" class="button">' . esc_html__( 'Filter', 'axle-license-tracker' ) . '</button></span></form>';
 	}
 
 	/**
@@ -497,11 +736,11 @@ class Page implements Service {
 		// License.
 		echo '<td>' . Display::state( $row['state'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		if ( 'not-applicable' !== $row['state'] ) {
-			echo '<br><span class="alc-muted alc-age">' . esc_html( Display::age( $row ) ) . '</span>';
+			echo '<br><span class="alc-muted alc-age">' . Display::age( $row ) . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		}
 		if ( '' !== $row['expires'] ) {
-			/* translators: %s: date or "lifetime". */
-			echo '<br><span class="alc-muted">' . esc_html( sprintf( __( 'Expires: %s', 'axle-license-tracker' ), 'lifetime' === $row['expires'] ? __( 'never (lifetime)', 'axle-license-tracker' ) : $row['expires'] ) ) . '</span>';
+			/* translators: %s: when, such as "in 3 weeks", or "never (lifetime)". */
+			echo '<br><span class="alc-muted">' . sprintf( esc_html__( 'Expires %s', 'axle-license-tracker' ), 'lifetime' === $row['expires'] ? esc_html__( 'never (lifetime)', 'axle-license-tracker' ) : Parts::date( $row['expires'] ) ) . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in date().
 		}
 		if ( '' !== $row['state_note'] ) {
 			echo '<br><span class="alc-muted">' . esc_html( $row['state_note'] ) . '</span>';
@@ -522,11 +761,7 @@ class Page implements Service {
 		// Renews.
 		echo '<td>';
 		if ( '' !== $row['renewal'] ) {
-			echo esc_html( $row['renewal'] ) . Display::source( $row, 'renewal' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
-			if ( null !== $row['days_left'] && $row['days_left'] >= 0 ) {
-				/* translators: %d: number of days. */
-				echo '<br><span class="alc-muted">' . esc_html( sprintf( _n( 'in %d day', 'in %d days', (int) $row['days_left'], 'axle-license-tracker' ), (int) $row['days_left'] ) ) . '</span>';
-			}
+			echo Parts::date( $row['renewal'] ) . Display::source( $row, 'renewal' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in date() and source().
 		} elseif ( 'lifetime' === $row['cycle'] ) {
 			echo esc_html__( 'Lifetime', 'axle-license-tracker' );
 		}
@@ -606,18 +841,18 @@ class Page implements Service {
 		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html( $row['name'] ) . ' <span class="alc-muted">' . esc_html( $row['version'] ) . '</span></h2>';
 		echo '<dl class="axle-facts alc-detected">';
 		$facts = array(
-			__( 'Type', 'axle-license-tracker' )    => Messages::get( 'type_' . $row['type'] ),
-			__( 'Vendor', 'axle-license-tracker' )  => '' !== $row['vendor'] ? $row['vendor'] : __( 'Not detected', 'axle-license-tracker' ),
-			__( 'Updater', 'axle-license-tracker' ) => '' !== $row['sdk'] ? $row['sdk'] : ( '' !== $row['source'] ? $row['source'] : __( 'None found', 'axle-license-tracker' ) ),
-			__( 'License', 'axle-license-tracker' ) => Messages::get( 'state_' . $row['state'] ) . ( 'not-applicable' !== $row['state'] ? ', ' . Display::age( $row ) : '' ),
-			__( 'Expires', 'axle-license-tracker' ) => '' !== $row['expires'] ? $row['expires'] : __( 'Not stored by the vendor', 'axle-license-tracker' ),
-			__( 'Updates', 'axle-license-tracker' ) => '' !== $row['risk'] ? Messages::get( 'risk_' . $row['risk'] ) . ( $row['risk_signals'] ? ': ' . implode( ' ', $row['risk_signals'] ) : '' ) : __( 'Not tracked', 'axle-license-tracker' ),
+			__( 'Type', 'axle-license-tracker' )    => esc_html( Messages::get( 'type_' . $row['type'] ) ),
+			__( 'Vendor', 'axle-license-tracker' )  => esc_html( '' !== $row['vendor'] ? $row['vendor'] : __( 'Not detected', 'axle-license-tracker' ) ),
+			__( 'Updater', 'axle-license-tracker' ) => esc_html( '' !== $row['sdk'] ? $row['sdk'] : ( '' !== $row['source'] ? $row['source'] : __( 'None found', 'axle-license-tracker' ) ) ),
+			__( 'License', 'axle-license-tracker' ) => esc_html( Messages::get( 'state_' . $row['state'] ) ) . ( 'not-applicable' !== $row['state'] ? ', ' . Display::age( $row ) : '' ),
+			__( 'Expires', 'axle-license-tracker' ) => '' !== $row['expires'] ? ( 'lifetime' === $row['expires'] ? esc_html__( 'Never (lifetime)', 'axle-license-tracker' ) : Parts::date( $row['expires'] ) ) : esc_html__( 'Not stored by the vendor', 'axle-license-tracker' ),
+			__( 'Updates', 'axle-license-tracker' ) => esc_html( '' !== $row['risk'] ? Messages::get( 'risk_' . $row['risk'] ) . ( $row['risk_signals'] ? ': ' . implode( ' ', $row['risk_signals'] ) : '' ) : __( 'Not tracked', 'axle-license-tracker' ) ),
 		);
 		if ( '' !== $row['fingerprint'] ) {
-			$facts[ __( 'Key fingerprint', 'axle-license-tracker' ) ] = Display::fingerprint( $row['fingerprint'] );
+			$facts[ __( 'Key fingerprint', 'axle-license-tracker' ) ] = esc_html( Display::fingerprint( $row['fingerprint'] ) );
 		}
 		foreach ( $facts as $label => $value ) {
-			echo '<dt>' . esc_html( $label ) . '</dt><dd>' . esc_html( $value ) . '</dd>';
+			echo '<dt>' . esc_html( $label ) . '</dt><dd>' . $value . '</dd>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Each value is escaped above.
 		}
 		echo '</dl></section>';
 
@@ -781,7 +1016,7 @@ class Page implements Service {
 		$settings = $this->settings->all();
 		printf( '<form method="post" action="%s" class="alc-settings">', esc_url( admin_url( 'admin-post.php' ) ) );
 		echo '<input type="hidden" name="action" value="axle_license_tracker_settings">';
-		wp_nonce_field( 'axle_license_tracker_settings' );
+		Parts::nonce( 'axle_license_tracker_settings' );
 		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html__( 'Renewal reminders', 'axle-license-tracker' ) . '</h2>';
 		echo '<table class="form-table" role="presentation"><tbody>';
 
@@ -802,6 +1037,15 @@ class Page implements Service {
 		printf( '<label for="alc-alerts"><input type="checkbox" id="alc-alerts" name="alerts" value="1"%1$s> %2$s</label><br>', checked( $settings['alerts'], true, false ), esc_html__( 'Email when a license expires or a plugin stops getting updates', 'axle-license-tracker' ) );
 		printf( '<label for="alc-digest"><input type="checkbox" id="alc-digest" name="digest" value="1"%1$s> %2$s</label>', checked( $settings['digest'], true, false ), esc_html__( 'Send a monthly digest of every license', 'axle-license-tracker' ) );
 		echo '</fieldset></td></tr>';
+		echo '</tbody></table></section>';
+		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html__( 'Hub', 'axle-license-tracker' ) . '</h2><table class="form-table" role="presentation"><tbody>';
+		printf(
+			'<tr><th scope="row">%1$s</th><td><fieldset><legend class="screen-reader-text">%1$s</legend><label for="alc-hub"><input type="checkbox" id="alc-hub" name="hub" value="1"%2$s aria-describedby="alc-hub-help"> %3$s</label><p class="description" id="alc-hub-help">%4$s</p></fieldset></td></tr>',
+			esc_html__( 'Other sites', 'axle-license-tracker' ),
+			checked( $settings['hub'], true, false ),
+			esc_html__( 'Use this site as a hub for the licenses of other sites', 'axle-license-tracker' ),
+			esc_html__( 'Adds a Sites tab. Each site is read once a day over https with an application password. The hub never changes anything on those sites.', 'axle-license-tracker' )
+		);
 		echo '</tbody></table></section>';
 		submit_button( __( 'Save settings', 'axle-license-tracker' ) );
 		echo '</form>';
@@ -897,13 +1141,13 @@ class Page implements Service {
 			return;
 		}
 
-		// phpcs:disable WordPress.Security.NonceVerification.Missing -- Checked in verify().
-		$ignore = ! empty( $_POST['ignore'] );
+		// phpcs:disable WordPress.Security.NonceVerification -- Checked in verify().
+		$ignore = ! empty( $_REQUEST['ignore'] );
 		$note   = isset( $_POST['note'] ) ? sanitize_textarea_field( wp_unslash( $_POST['note'] ) ) : '';
-		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		// phpcs:enable WordPress.Security.NonceVerification
 
 		$this->tracker->ignore( $id, $ignore, $note, get_current_user_id() );
-		$this->back( $ignore ? 'ignored' : 'unignored' );
+		$this->back( $ignore ? 'ignored' : 'unignored', $ignore ? array( 'alc_c' => $id ) : array() );
 	}
 
 	/**
@@ -922,6 +1166,9 @@ class Page implements Service {
 			)
 		);
 		// phpcs:enable WordPress.Security.NonceVerification.Missing
+		// The hub goes through its own switch, which schedules the sync and fires the action.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Checked in verify().
+		$this->hub->set_enabled( ! empty( $_POST['hub'] ) );
 
 		$this->back( 'settings', array( 'tab' => 'settings' ) );
 	}

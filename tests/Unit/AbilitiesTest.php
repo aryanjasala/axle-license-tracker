@@ -13,6 +13,7 @@ use AryanX\Axle\LicenseTracker\Admin\PluginsScreen;
 use AryanX\Axle\LicenseTracker\Bundles;
 use AryanX\Axle\LicenseTracker\Capability;
 use AryanX\Axle\LicenseTracker\Details;
+use AryanX\Axle\LicenseTracker\Hub\Hub;
 use AryanX\Axle\LicenseTracker\Inventory;
 use AryanX\Axle\LicenseTracker\Lifecycle;
 use AryanX\Axle\LicenseTracker\Licenses;
@@ -34,10 +35,22 @@ final class AbilitiesTest extends LicenseTestCase {
 	 */
 	private $registered = array();
 
+	/**
+	 * A hub that is off.
+	 *
+	 * @return Hub
+	 */
+	private function hub(): Hub {
+		$hub = Mockery::mock( Hub::class );
+		$hub->shouldReceive( 'enabled' )->andReturn( false );
+
+		return $hub;
+	}
+
 	private function abilities( ?Tracker $tracker = null ): Abilities {
 		$tracker = $tracker ?? Mockery::mock( Tracker::class );
 
-		return new Abilities( $tracker, Mockery::mock( Report::class ), new Details( new Licenses() ) );
+		return new Abilities( $tracker, Mockery::mock( Report::class ), new Details( new Licenses() ), $this->hub() );
 	}
 
 	public function test_nothing_is_hooked_without_the_abilities_api(): void {
@@ -46,7 +59,7 @@ final class AbilitiesTest extends LicenseTestCase {
 		$this->assertFalse( has_action( 'wp_abilities_api_init' ) );
 	}
 
-	public function test_registers_six_abilities_with_annotations_and_the_capability(): void {
+	public function test_registers_nine_abilities_with_annotations_and_the_capability(): void {
 		Functions\when( 'wp_register_ability' )->alias(
 			function ( $name, $args ) {
 				$this->registered[ $name ] = $args;
@@ -61,7 +74,7 @@ final class AbilitiesTest extends LicenseTestCase {
 		$abilities->register_abilities();
 
 		$this->assertSame(
-			array( 'get-license-report', 'list-expiring', 'get-component', 'recheck-licenses', 'update-license-details', 'ignore-component' ),
+			array( 'get-license-report', 'list-expiring', 'get-component', 'get-hub-report', 'get-cost-forecast', 'sync-hub', 'recheck-licenses', 'update-license-details', 'ignore-component' ),
 			array_map(
 				static function ( string $name ): string {
 					return substr( $name, strlen( 'axle-license-tracker/' ) );
@@ -69,10 +82,10 @@ final class AbilitiesTest extends LicenseTestCase {
 				array_keys( $this->registered )
 			)
 		);
-		foreach ( array( 'get-license-report', 'list-expiring', 'get-component' ) as $name ) {
+		foreach ( array( 'get-license-report', 'list-expiring', 'get-component', 'get-hub-report', 'get-cost-forecast' ) as $name ) {
 			$this->assertTrue( $this->registered[ 'axle-license-tracker/' . $name ]['meta']['annotations']['readonly'] );
 		}
-		foreach ( array( 'recheck-licenses', 'update-license-details', 'ignore-component' ) as $name ) {
+		foreach ( array( 'sync-hub', 'recheck-licenses', 'update-license-details', 'ignore-component' ) as $name ) {
 			$this->assertSame(
 				array(
 					'readonly'    => false,
@@ -114,6 +127,13 @@ final class AbilitiesTest extends LicenseTestCase {
 		$this->assertArrayHasKey( 'renewal', $error->get_error_data()['fields'] );
 	}
 
+	public function test_hub_abilities_say_so_while_the_hub_is_off(): void {
+		$abilities = $this->abilities();
+
+		$this->assertSame( 'axle_license_tracker_hub_off', $abilities->get_hub_report()->get_error_code() );
+		$this->assertSame( 'axle_license_tracker_hub_off', $abilities->sync_hub()->get_error_code() );
+	}
+
 	public function test_report_route_needs_either_capability(): void {
 		$report = Mockery::mock( Report::class );
 		$report->shouldReceive( 'build' )->andReturn( array( 'components' => array() ) );
@@ -140,7 +160,7 @@ final class AbilitiesTest extends LicenseTestCase {
 		Functions\expect( 'wp_schedule_event' )->once()->with( Mockery::type( 'int' ), 'daily', Lifecycle::DAILY );
 		Lifecycle::activate();
 
-		Functions\expect( 'wp_clear_scheduled_hook' )->twice();
+		Functions\expect( 'wp_clear_scheduled_hook' )->times( 3 );
 		Lifecycle::deactivate();
 	}
 

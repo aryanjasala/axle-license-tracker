@@ -48,6 +48,84 @@
       "steps": [{ "waitFor": ".alc-settings" }]
     },
     {
+      "name": "Plugins > Licenses with the Get started card",
+      "setup": [{ "wp": ["user", "meta", "delete", "1", "axle_license_tracker_steps_dismissed"], "mayFail": true }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker",
+      "steps": [{ "waitFor": ".alc-steps" }]
+    },
+    {
+      "name": "Plugins > Licenses with the Help tab open",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker",
+      "include": ["#contextual-help-wrap"],
+      "steps": [{ "click": "#contextual-help-link" }, { "waitFor": "#tab-panel-axle-license-tracker-overview" }]
+    },
+    {
+      "name": "Costs with nothing to add up",
+      "setup": [{ "js": "seed.js", "call": "removeFixtures" }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=costs",
+      "steps": [{ "waitFor": ".alc-costs .alc-empty" }]
+    },
+    {
+      "name": "Costs for the next 12 months",
+      "setup": [
+        { "js": "seed.js", "call": "seedDemo" },
+        { "wp": ["axle-license-tracker", "set", "plugin:alc-edd-fixture/alc-edd-fixture.php", "--renewal=2099-01-15", "--cost=199", "--currency=USD", "--cycle=yearly"] },
+        { "wp": ["axle-license-tracker", "set", "plugin:alc-freemius-fixture/alc-freemius-fixture.php", "--cost=49", "--currency=EUR", "--cycle=monthly"] }
+      ],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=costs",
+      "steps": [{ "waitFor": ".alc-forecast" }]
+    },
+    {
+      "name": "Costs with the calendar feed on and a confirm step open",
+      "setup": [{ "wp": ["axle-license-tracker", "feed", "enable"] }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=costs",
+      "steps": [{ "click": "[data-alc-confirm=\"alc-confirm-regenerate\"]" }, { "waitFor": "#alc-confirm-regenerate:not([hidden])" }],
+      "cleanup": [{ "wp": ["option", "delete", "axle_license_tracker_feed"] }]
+    },
+    {
+      "name": "Sites with the hub off",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=sites",
+      "steps": [{ "waitFor": ".alc-empty" }]
+    },
+    {
+      "name": "Sites with the hub on and no sites yet",
+      "setup": [{ "wp": ["axle-license-tracker", "hub", "enable"] }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=sites",
+      "steps": [{ "waitFor": ".alc-hub-add" }]
+    },
+    {
+      "name": "Sites with a reached site, shared keys and a confirm step open",
+      "setup": [
+        { "wp": ["user", "application-password", "create", "admin", "A11y hub", "--porcelain"], "save": "pw" },
+        { "wp": ["axle-license-tracker", "hub", "add", "http://wp/", "--username=admin", "--password={pw}", "--label=Loopback"] }
+      ],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=sites",
+      "steps": [{ "waitFor": ".alc-hub-table" }, { "click": ".alc-sites-table .alc-confirm-trigger" }, { "waitFor": ".alc-sites-table .alc-confirm:not([hidden])" }]
+    },
+    {
+      "name": "Sites with a site that could not be reached",
+      "setup": [{ "wp": ["axle-license-tracker", "hub", "add", "http://localhost:9/", "--username=nobody", "--password=abcd efgh", "--label=Offline", "--skip-sync"] }, { "js": "seed.js", "call": "failSite", "args": ["Offline"] }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=sites",
+      "steps": [{ "waitFor": ".alc-sites-table .axle-badge--error" }],
+      "cleanup": [
+        { "js": "seed.js", "call": "removeSites" },
+        { "wp": ["user", "application-password", "delete", "admin", "--all"], "mayFail": true },
+        { "wp": ["axle-license-tracker", "hub", "disable"] }
+      ]
+    },
+    {
+      "name": "Sites after adding one with a wrong address",
+      "setup": [{ "wp": ["axle-license-tracker", "hub", "enable"] }],
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=sites",
+      "steps": [{ "fill": "#alc-site-url", "value": "ftp://nope" }, { "fill": "#alc-site-user", "value": "someone" }, { "fill": "#alc-site-password", "value": "abcd efgh" }, { "click": ".alc-hub-add button[type=submit]" }, { "waitFor": ".alc-notice.notice-error" }],
+      "cleanup": [{ "wp": ["axle-license-tracker", "hub", "disable"] }]
+    },
+    {
+      "name": "Settings with the hub option",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&tab=settings",
+      "steps": [{ "waitFor": "#alc-hub" }]
+    },
+    {
       "name": "License column on the Plugins screen",
       "url": "/wp-admin/plugins.php",
       "include": ["td.column-axle_license_tracker"],
