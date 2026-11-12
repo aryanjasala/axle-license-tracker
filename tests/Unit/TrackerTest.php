@@ -13,6 +13,7 @@ use AryanX\Axle\LicenseTracker\Classifier;
 use AryanX\Axle\LicenseTracker\Details;
 use AryanX\Axle\LicenseTracker\Export;
 use AryanX\Axle\LicenseTracker\Health\SiteHealth;
+use AryanX\Axle\LicenseTracker\Hub\Hub;
 use AryanX\Axle\LicenseTracker\Inventory;
 use AryanX\Axle\LicenseTracker\Licenses;
 use AryanX\Axle\LicenseTracker\Privacy;
@@ -307,7 +308,9 @@ final class TrackerTest extends LicenseTestCase {
 
 	public function test_site_health(): void {
 		Functions\when( 'esc_html__' )->returnArg();
-		$health = new SiteHealth( $this->tracker() );
+		$hub = Mockery::mock( Hub::class );
+		$hub->shouldReceive( 'enabled' )->andReturn( false );
+		$health = new SiteHealth( $this->tracker(), $hub );
 		$this->assertArrayHasKey( 'axle_license_tracker', $health->add_test( array() )['direct'] );
 
 		$result = $health->run();
@@ -315,6 +318,6 @@ final class TrackerTest extends LicenseTestCase {
 		$this->assertStringContainsString( 'License expired: Test lapsed/lapsed.php', $result['description'] );
 
 		unset( $this->components['plugin:lapsed/lapsed.php'] );
-		$this->assertSame( 'good', ( new SiteHealth( $this->tracker() ) )->run()['status'] );
+		$this->assertSame( 'good', ( new SiteHealth( $this->tracker(), $hub ) )->run()['status'] );
 	}
 }

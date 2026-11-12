@@ -8,6 +8,9 @@ const OPTIONS = [
 	'axle_license_tracker_settings',
 	'axle_license_tracker_detection',
 	'alc_fixture_mail',
+	'alc_fixture_allow_private',
+	'axle_license_tracker_hub_sites',
+	'axle_license_tracker_feed',
 	'fs_accounts',
 	'alc_edd_fixture_license_key',
 	'alc_edd_fixture_license_status',
@@ -66,6 +69,9 @@ function resetData() {
 	}
 	wpEval( 'foreach ( get_posts( array( "post_type" => "alc_license", "post_status" => "any", "numberposts" => -1, "fields" => "ids" ) ) as $id ) { wp_delete_post( $id, true ); }' );
 	wpEval( 'delete_site_transient( "update_plugins" ); delete_site_transient( "update_themes" );' );
+	// What the hub fetched from each remote site: one option per site.
+	wpEval( 'global $wpdb; $wpdb->query( $wpdb->prepare( "DELETE FROM {$wpdb->options} WHERE option_name LIKE %s", $wpdb->esc_like( "axle_license_tracker_hub_data_" ) . "%" ) );' );
+	wpEval( 'wp_clear_scheduled_hook( "axle_license_tracker_hub_sync" ); delete_metadata( "user", 0, "axle_license_tracker_steps_dismissed", "", true );' );
 }
 
 /**
@@ -123,4 +129,24 @@ function seedDemo() {
 	wp( 'axle-license-tracker', 'set', 'plugin:alc-silent-fixture/alc-silent-fixture.php', `--renewal=${ date( 45 ) }`, '--cost=49', '--currency=USD', '--cycle=yearly', '--owner=Agency' );
 }
 
-module.exports = { KEYS, PLUGINS, installFixtures, removeFixtures, resetData, setFreemius, setEdd, setLastSeen, rows, seedDemo };
+/** Marks a hub site as failing, as three failed syncs in a row would. */
+function failSite( label ) {
+	wpEval(
+		`$sites = get_option( "axle_license_tracker_hub_sites", array() );
+		foreach ( $sites as $id => $site ) {
+			if ( ${ JSON.stringify( label ) } === $site["label"] ) {
+				$sites[ $id ]["fails"] = 3;
+				$sites[ $id ]["tried"] = time() - 600;
+				$sites[ $id ]["error"] = "The site could not be reached: Connection refused. Check the address and that the site is online.";
+			}
+		}
+		update_option( "axle_license_tracker_hub_sites", $sites, false );`
+	);
+}
+
+/** Removes every site from the hub, with its data. */
+function removeSites() {
+	wpEval( 'foreach ( array_keys( (array) get_option( "axle_license_tracker_hub_sites", array() ) ) as $id ) { delete_option( "axle_license_tracker_hub_data_" . $id ); } delete_option( "axle_license_tracker_hub_sites" );' );
+}
+
+module.exports = { failSite, removeSites, KEYS, PLUGINS, installFixtures, removeFixtures, resetData, setFreemius, setEdd, setLastSeen, rows, seedDemo };

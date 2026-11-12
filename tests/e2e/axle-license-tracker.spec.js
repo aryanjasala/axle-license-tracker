@@ -1,4 +1,6 @@
+const { request } = require( '@playwright/test' );
 const { test, expect, wp, wpEval, appPasswordClient, logInAs } = require( './utils' );
+const { BASE_URL } = require( './utils/config' );
 const seed = require( './seed' );
 
 const SCREEN = '/wp-admin/plugins.php?page=axle-license-tracker';
@@ -45,6 +47,9 @@ const mails = () => {
 
 const abilities = () => '1' === wpEval( 'echo function_exists( "wp_register_ability" ) ? 1 : 0;' );
 
+/** Ids of the sites in the hub. */
+const listedIds = () => JSON.parse( wp( 'axle-license-tracker', 'hub', 'list', '--format=json' ) ).map( ( site ) => site.id );
+
 /** The table row of a component on the screen. */
 const row = ( page, id ) => page.locator( `.alc-table tr[data-component="${ id }"]` );
 
@@ -85,7 +90,8 @@ test.describe( 'Axle License Tracker', () => {
 		await page.goto( SCREEN );
 		const freemius = row( page, ID.freemius );
 		await expect( freemius.locator( '.alc-state-expired' ) ).toHaveText( 'Expired' );
-		await expect( freemius ).toContainText( `Expires: ${ day( -1 ) }` );
+		await expect( freemius ).toContainText( 'Expires' );
+		await expect( freemius.locator( `time.axle-time[datetime^="${ day( -1 ) }"]` ).first() ).toBeVisible();
 		await expect( freemius ).toContainText( 'first read' );
 		await expect( page.locator( '.alc-tile-expired .alc-tile-number' ) ).toHaveText( '1' );
 
@@ -210,8 +216,11 @@ test.describe( 'Axle License Tracker', () => {
 		await page.goto( SCREEN );
 		const edd = row( page, ID.edd );
 		await expect( edd.locator( '.alc-state-expiring' ) ).toHaveText( 'Expiring' );
-		await expect( edd ).toContainText( `${ renewal } set by hand` );
-		await expect( edd ).toContainText( 'in 7 days' );
+		await expect( edd ).toContainText( 'set by hand' );
+		// Dates are shown relative, with the exact date in the title and the datetime.
+		const due = edd.locator( `time.axle-time[datetime^="${ renewal }"]` );
+		await expect( due ).toHaveText( /^in (\d+ (days?|hours?)|1 week)$/ );
+		await expect( due ).toHaveAttribute( 'title', /20\d\d/ );
 		await expect( edd.locator( '.alc-cost' ) ).toHaveText( 'USD:19900' );
 		// 199.00 a year plus 5.00 a month in USD, 49.00 in EUR, never added together.
 		await expect( page.locator( '.alc-tile-cost .alc-cost[data-currency="USD"]' ) ).toHaveText( 'USD:25900' );
@@ -256,7 +265,7 @@ test.describe( 'Axle License Tracker', () => {
 		await page.getByRole( 'button', { name: 'Save settings' } ).click();
 		await expect( page.locator( '.alc-notice' ) ).toContainText( 'Settings saved.' );
 		const settings = JSON.parse( wp( 'option', 'get', 'axle_license_tracker_settings', '--format=json' ) );
-		expect( settings ).toEqual( { reminder_days: [ 20, 5 ], recipients: [ 'billing@example.com' ], alerts: true, digest: true } );
+		expect( settings ).toEqual( { reminder_days: [ 20, 5 ], recipients: [ 'billing@example.com' ], alerts: true, digest: true, hub: false } );
 
 		// The digest goes out once a month, to the extra recipient too.
 		succeeds( 'option', 'delete', 'alc_fixture_mail' );
@@ -276,6 +285,15 @@ test.describe( 'Axle License Tracker', () => {
 		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The component is ignored.' );
 		await expect( row( page, ID.silent ) ).toContainText( 'Ignored' );
 		expect( meta( ID.silent, '_alc_ignored' ) ).toMatchObject( { note: 'Retired, removed next sprint', by: 1 } );
+		// The notice offers Undo, and Undo tracks the component again.
+		await expect( page.locator( '.alc-notice .alc-undo' ) ).toBeVisible();
+		await page.locator( '.alc-notice .alc-undo' ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The component is tracked again.' );
+		expect( meta( ID.silent, '_alc_ignored' ) ).toBeNull();
+		await row( page, ID.silent ).locator( 'a[data-action="ignore"]' ).click();
+		await page.getByLabel( 'Why (optional)' ).fill( 'Retired, removed next sprint' );
+		await page.getByRole( 'button', { name: 'Ignore this component' } ).click();
+		await expect( row( page, ID.silent ) ).toContainText( 'Ignored' );
 
 		succeeds( 'option', 'delete', 'alc_fixture_mail' );
 		wp( 'cron', 'event', 'run', 'axle_license_tracker_daily' );
@@ -414,7 +432,7 @@ test.describe( 'Axle License Tracker', () => {
 		const widget = page.locator( '#axle_license_tracker' );
 		await expect( widget ).toContainText( 'Needs a look' );
 		await expect( widget.locator( 'li', { hasText: 'ALC Freemius Fixture' } ).locator( '.alc-state-expired' ) ).toBeVisible();
-		await expect( widget.locator( 'li', { hasText: 'ALC EDD Fixture' } ) ).toContainText( day( 7 ) );
+		await expect( widget.locator( 'li', { hasText: 'ALC EDD Fixture' } ).locator( `time.axle-time[datetime^="${ day( 7 ) }"]` ) ).toBeVisible();
 	} );
 
 	test( 'Check again rereads stored data and asks for updates', async ( { page } ) => {
@@ -439,17 +457,323 @@ test.describe( 'Axle License Tracker', () => {
 		expect( meta( ID.edd, '_alc_owner' ) ).toBe( 'Bean There' );
 	} );
 
+	test( 'the Licenses screen has a Help tab, a Get started card and a link on the Plugins screen', async ( { page } ) => {
+		succeeds( 'user', 'meta', 'delete', '1', 'axle_license_tracker_steps_dismissed' );
+		await page.goto( SCREEN );
+
+		await page.locator( '#contextual-help-link' ).click();
+		await expect( page.locator( '#tab-link-axle-license-tracker-overview' ) ).toBeVisible();
+		await expect( page.locator( '#tab-link-axle-license-tracker-states' ) ).toBeVisible();
+		await page.locator( '#contextual-help-link' ).click();
+
+		const steps = page.locator( '.alc-steps' );
+		await expect( steps ).toContainText( 'Get started' );
+		await expect( steps.locator( '.axle-step' ) ).toHaveCount( 4 );
+		await expect( steps.locator( '.axle-step' ).first().locator( '.axle-badge--good' ) ).toHaveText( 'Done' );
+		await steps.getByRole( 'button', { name: 'Dismiss this card' } ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The Get started card is hidden.' );
+		await expect( steps ).toHaveCount( 0 );
+		expect( wp( 'user', 'meta', 'get', '1', 'axle_license_tracker_steps_dismissed' ) ).toBe( '1' );
+		succeeds( 'user', 'meta', 'delete', '1', 'axle_license_tracker_steps_dismissed' );
+
+		await page.goto( '/wp-admin/plugins.php' );
+		await expect( page.locator( 'tr[data-slug="axle-license-tracker"] .row-actions a', { hasText: 'Licenses' } ) ).toHaveAttribute( 'href', /page=axle-license-tracker/ );
+	} );
+
+	test( 'the Costs tab adds up the next 12 months per currency and lists what it left out', async ( { page } ) => {
+		wp( 'axle-license-tracker', 'set', ID.edd, `--renewal=${ day( 40 ) }`, '--cost=100', '--currency=USD', '--cycle=yearly' );
+		wp( 'axle-license-tracker', 'set', ID.blocked, `--renewal=${ day( 10 ) }`, '--cost=10', '--currency=EUR', '--cycle=monthly' );
+		wp( 'axle-license-tracker', 'set', ID.silent, '--cost=5', '--currency=USD', '--cycle=monthly', '--renewal=' );
+
+		await page.goto( `${ SCREEN }&tab=costs` );
+		await expect( page.getByRole( 'heading', { name: 'The next 12 months' } ) ).toBeVisible();
+		const forecast = JSON.parse( wp( 'axle-license-tracker', 'costs', '--format=json' ) );
+		expect( forecast.totals.USD ).toBe( 10000 );
+		expect( forecast.totals.EUR ).toBeGreaterThanOrEqual( 11 * 1000 );
+		expect( forecast.no_date.map( ( item ) => item.name ) ).toContain( 'ALC Silent Fixture' );
+		await expect( page.locator( '.alc-tile-total' ) ).toHaveCount( 2 );
+		await expect( page.locator( '.alc-forecast tbody tr' ) ).toHaveCount( 12 );
+		await expect( page.locator( '.alc-forecast' ).getByText( 'ALC EDD Fixture' ) ).toBeVisible();
+		await expect( page.locator( '.alc-left-out [data-group="no_date"]' ) ).toContainText( 'ALC Silent Fixture' );
+
+		// The same numbers as a CSV, with the left-out items after the charges.
+		const href = await page.getByRole( 'link', { name: 'Download CSV' } ).getAttribute( 'href' );
+		const csv = await ( await page.request.get( href ) ).text();
+		expect( csv ).toContain( '"charge","' + day( 40 ) + '","' );
+		expect( csv ).toContain( '"100.00"' );
+		expect( csv ).toContain( '"no-date"' );
+		expect( wp( 'axle-license-tracker', 'costs', '--format=csv' ) ).toContain( '"ALC EDD Fixture"' );
+
+		wp( 'axle-license-tracker', 'set', ID.edd, '--renewal=' + day( 7 ), '--cost=199', '--currency=USD', '--cycle=yearly' );
+		wp( 'axle-license-tracker', 'set', ID.blocked, '--cost=', '--currency=', '--cycle=', '--renewal=' );
+		wp( 'axle-license-tracker', 'set', ID.silent, '--cost=5', '--currency=USD', '--cycle=monthly' );
+	} );
+
+	test( 'the calendar feed is off by default, serves renewals behind a secret link and never leaks keys', async ( { page } ) => {
+		wp( 'axle-license-tracker', 'set', ID.edd, `--renewal=${ day( 20 ) }`, '--owner-email=owner@example.com' );
+		const anonymous = await request.newContext( { baseURL: BASE_URL, storageState: { cookies: [], origins: [] } } );
+		try {
+			expect( wp( 'axle-license-tracker', 'feed', 'status' ) ).toBe( 'off' );
+			expect( ( await anonymous.get( '/?axle-license-tracker-ics=' + 'a'.repeat( 40 ) ) ).status() ).toBe( 404 );
+
+			await page.goto( `${ SCREEN }&tab=costs` );
+			await expect( page.locator( '.alc-feed' ) ).toContainText( 'The calendar feed is off' );
+			await page.getByRole( 'button', { name: 'Turn on the calendar feed' } ).click();
+			await expect( page.locator( '.alc-notice' ) ).toContainText( 'The calendar feed is on.' );
+			const url = await page.locator( '#alc-feed-url' ).inputValue();
+			expect( url ).toMatch( /\?axle-license-tracker-ics=[A-Za-z0-9]{40}$/ );
+			expect( JSON.parse( wp( 'option', 'get', 'axle_license_tracker_feed', '--format=json' ) ).token ).toHaveLength( 40 );
+
+			const feed = await anonymous.get( url.replace( /^https?:\/\/[^/]+/, '' ) );
+			expect( feed.status() ).toBe( 200 );
+			expect( feed.headers()[ 'content-type' ] ).toContain( 'text/calendar' );
+			expect( feed.headers()[ 'x-robots-tag' ] ).toContain( 'noindex' );
+			const ics = await feed.text();
+			expect( ics ).toContain( 'BEGIN:VCALENDAR' );
+			expect( ics ).toContain( 'SUMMARY:Renews: ALC EDD Fixture' );
+			expect( ics ).toContain( 'DTSTART;VALUE=DATE:' + day( 20 ).replace( /-/g, '' ) );
+			expect( ics ).toContain( 'Cost: ' );
+			expect( ics ).not.toMatch( /ALCEDDKEY|sk_ALCFREEMIUSSECRET|owner@example\.com|[0-9a-f]{12}-0011/ );
+			expect( ics ).not.toContain( 'wp-admin' );
+
+			// A new link kills the old one, through the in-place confirm step.
+			const regenerate = page.getByRole( 'button', { name: 'Make a new link', exact: true } );
+			await expect( page.locator( '#alc-confirm-regenerate' ) ).toBeHidden();
+			await regenerate.click();
+			await expect( page.locator( '#alc-confirm-regenerate' ) ).toBeFocused();
+			await expect( page.locator( '#alc-confirm-regenerate' ) ).toContainText( 'This cannot be undone' );
+			await page.locator( '#alc-confirm-regenerate' ).getByRole( 'button', { name: 'Cancel' } ).click();
+			await expect( page.locator( '#alc-confirm-regenerate' ) ).toBeHidden();
+			await expect( regenerate ).toBeFocused();
+			await regenerate.click();
+			await page.locator( '#alc-confirm-regenerate' ).getByRole( 'button', { name: 'Make a new link' } ).click();
+			await expect( page.locator( '.alc-notice' ) ).toContainText( 'The link is new.' );
+			const fresh = await page.locator( '#alc-feed-url' ).inputValue();
+			expect( fresh ).not.toBe( url );
+			expect( ( await anonymous.get( url.replace( /^https?:\/\/[^/]+/, '' ) ) ).status() ).toBe( 404 );
+			expect( ( await anonymous.get( fresh.replace( /^https?:\/\/[^/]+/, '' ) ) ).status() ).toBe( 200 );
+
+			await page.locator( '.alc-confirm-trigger[data-alc-confirm="alc-confirm-disable"]' ).click();
+			await page.locator( '#alc-confirm-disable' ).getByRole( 'button', { name: 'Turn off the feed' } ).click();
+			await expect( page.locator( '.alc-notice' ) ).toContainText( 'The calendar feed is off.' );
+			expect( ( await anonymous.get( fresh.replace( /^https?:\/\/[^/]+/, '' ) ) ).status() ).toBe( 404 );
+			expect( wp( 'axle-license-tracker', 'feed', 'status' ) ).toBe( 'off' );
+		} finally {
+			await anonymous.dispose();
+			succeeds( 'option', 'delete', 'axle_license_tracker_feed' );
+			wp( 'axle-license-tracker', 'set', ID.edd, `--renewal=${ day( 7 ) }`, '--owner-email=owner@example.com' );
+		}
+	} );
+
+	test( 'the hub shows the licenses of other sites, keeps the password encrypted and only reads', async ( { page } ) => {
+		people.push( 'alc-hub-reporter' );
+		succeeds( 'user', 'delete', 'alc-hub-reporter', '--yes' );
+		wp( 'user', 'create', 'alc-hub-reporter', 'alc-hub-reporter@example.com', '--role=axle_license_reporter', '--user_pass=reporter-pass-9' );
+		const password = wp( 'user', 'application-password', 'create', 'alc-hub-reporter', 'Hub', '--porcelain' );
+		const secretsGone = () => {
+			const stored = wp( 'option', 'get', 'axle_license_tracker_hub_sites', '--format=json' );
+			expect( stored ).not.toContain( password );
+			expect( stored ).not.toContain( password.replace( / /g, '' ) );
+		};
+
+		// Off by default: the tab explains, and one button turns it on.
+		await page.goto( `${ SCREEN }&tab=sites` );
+		await expect( page.getByRole( 'heading', { name: 'The hub is off' } ) ).toBeVisible();
+		await expect( page.locator( '.alc-wrap' ).getByText( 'Add a site' ) ).toHaveCount( 0 );
+		await page.getByRole( 'button', { name: 'Turn on the hub' } ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The hub is on.' );
+		expect( JSON.parse( wp( 'option', 'get', 'axle_license_tracker_settings', '--format=json' ) ).hub ).toBe( true );
+		expect( wpEval( 'echo (bool) wp_next_scheduled( "axle_license_tracker_hub_sync" ) ? 1 : 0;' ) ).toBe( '1' );
+		await expect( page.locator( '.alc-sites' ) ).toContainText( 'No other sites yet' );
+
+		// This same site is its own remote. Inside the Docker network it answers as http://wp/, for the web and the CLI container alike.
+		await page.getByLabel( 'Site address' ).fill( 'http://wp/' );
+		await page.getByLabel( 'User name' ).fill( 'alc-hub-reporter' );
+		await page.getByLabel( 'Application password' ).fill( password );
+		await page.getByLabel( 'Name (optional)' ).fill( 'Loopback' );
+		await page.getByRole( 'button', { name: 'Add site and check it' } ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( /Loopback was added and reported \d+ licenses?\./ );
+		secretsGone();
+		expect( wp( 'option', 'get', 'axle_license_tracker_hub_sites', '--format=json' ) ).toContain( '"secret":"v1:' );
+
+		const siteRow = page.locator( '.alc-sites-table tr[data-site]' ).first();
+		await expect( siteRow ).toContainText( 'Loopback' );
+		await expect( siteRow.locator( '.axle-badge--good' ) ).toHaveText( 'Reached' );
+		await expect( siteRow.locator( 'time.axle-time' ).first() ).toBeVisible();
+
+		// The licenses of both sites in one table, and the same key found on both.
+		const licenses = page.locator( '.alc-hub-table' );
+		await expect( licenses.locator( 'tr', { hasText: 'ALC EDD Fixture' } ) ).toHaveCount( 2 );
+		await expect( licenses.locator( 'tr', { hasText: 'ALC EDD Fixture' } ).first() ).toContainText( 'On 2 sites' );
+		await expect( page.locator( '.alc-hub-dups' ) ).toContainText( 'The same license on several sites' );
+		await expect( page.locator( '.alc-hub-costs' ) ).toContainText( 'USD' );
+		await expect( page.locator( '.alc-tile-sites .axle-stat__value' ) ).toHaveText( '2' );
+
+		await page.getByLabel( 'Search licenses' ).fill( 'Freemius' );
+		await page.getByRole( 'button', { name: 'Filter' } ).click();
+		await expect( licenses.locator( 'tbody tr' ) ).toHaveCount( 2 );
+		await page.getByLabel( 'Search licenses' ).fill( '' );
+		await page.getByLabel( 'Site', { exact: true } ).selectOption( 'local' );
+		await page.getByLabel( 'Expired or renewing in 30 days' ).check();
+		await page.getByRole( 'button', { name: 'Filter' } ).click();
+		await expect( licenses.locator( 'tbody tr' ) ).not.toHaveCount( 0 );
+		await expect( licenses.locator( 'tbody tr[data-site="local"]' ) ).not.toHaveCount( 0 );
+
+		// CLI and abilities agree, and neither shows a password or a key.
+		const listed = JSON.parse( wp( 'axle-license-tracker', 'hub', 'list', '--format=json' ) );
+		expect( listed ).toHaveLength( 1 );
+		expect( listed[ 0 ].failures ).toBe( 0 );
+		expect( JSON.stringify( listed ) ).not.toContain( password );
+		const dups = JSON.parse( wp( 'axle-license-tracker', 'hub', 'licenses', '--duplicates', '--format=json' ) );
+		expect( dups.length ).toBeGreaterThan( 0 );
+		expect( wp( 'axle-license-tracker', 'hub', 'sync', '--all' ) ).toContain( 'Fetched 1 sites.' );
+		if ( abilities() ) {
+			const hub = await page.request.get( '/index.php?rest_route=/wp-abilities/v1/abilities/axle-license-tracker/get-hub-report/run', { headers: { 'X-WP-Nonce': ( await ( await page.request.get( '/wp-admin/admin-ajax.php?action=rest-nonce' ) ).text() ).trim() } } );
+			expect( hub.status() ).toBe( 200 );
+			const body = JSON.stringify( await hub.json() );
+			expect( body ).not.toContain( password );
+			expect( body ).not.toMatch( /secret|ALCEDDKEY|sk_ALCFREEMIUSSECRET/ );
+			expect( body ).toContain( 'Loopback' );
+		}
+
+		// Remove: the in-place confirm step says what is lost, then the site, password and data are gone.
+		const id = listed[ 0 ].id;
+		await page.goto( `${ SCREEN }&tab=sites` );
+		const trigger = page.locator( `[data-alc-confirm="alc-remove-${ id }"]` );
+		await page.evaluate( () => {
+			window.confirmEvents = [];
+			window.wp.hooks.addAction( 'axleLicenseTracker.confirmOpened', 'e2e', ( opened ) => window.confirmEvents.push( 'open:' + opened ) );
+			window.wp.hooks.addAction( 'axleLicenseTracker.confirmClosed', 'e2e', ( closed ) => window.confirmEvents.push( 'close:' + closed ) );
+		} );
+		await trigger.click();
+		const confirm = page.locator( `#alc-remove-${ id }` );
+		await expect( confirm ).toBeFocused();
+		await expect( confirm ).toContainText( 'This cannot be undone' );
+		await page.keyboard.press( 'Escape' );
+		await expect( confirm ).toBeHidden();
+		await expect( trigger ).toBeFocused();
+		expect( await page.evaluate( () => window.confirmEvents ) ).toEqual( [ `open:alc-remove-${ id }`, `close:alc-remove-${ id }` ] );
+		expect( listedIds() ).toContain( id );
+		await trigger.click();
+		await confirm.getByRole( 'button', { name: 'Remove Loopback' } ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( 'Loopback was removed, with its password and its licenses.' );
+		expect( listedIds() ).not.toContain( id );
+		expect( wpEval( `echo get_option( "axle_license_tracker_hub_data_${ id }", "none" );` ) ).toBe( 'none' );
+
+		// Turning the hub off keeps the Sites tab but offers Undo.
+		await page.locator( '.alc-sites' ).waitFor();
+		wp( 'axle-license-tracker', 'hub', 'add', 'http://wp/', '--username=alc-hub-reporter', `--password=${ password }`, '--label=Again' );
+		await page.goto( `${ SCREEN }&tab=settings` );
+		await page.getByLabel( 'Use this site as a hub for the licenses of other sites' ).uncheck();
+		await page.getByRole( 'button', { name: 'Save settings' } ).click();
+		expect( wpEval( 'echo (bool) wp_next_scheduled( "axle_license_tracker_hub_sync" ) ? 1 : 0;' ) ).toBe( '0' );
+		expect( listedIds() ).toHaveLength( 1 );
+		await page.goto( `${ SCREEN }&tab=sites` );
+		await expect( page.getByRole( 'heading', { name: 'The hub is off' } ) ).toBeVisible();
+		wp( 'axle-license-tracker', 'hub', 'enable' );
+		wp( 'axle-license-tracker', 'hub', 'remove', listedIds()[ 0 ], '--yes' );
+		expect( listedIds() ).toHaveLength( 0 );
+	} );
+
+	test( 'a site that cannot be reached says why and is retried later, and private addresses are refused', async ( { page } ) => {
+		wp( 'axle-license-tracker', 'hub', 'enable' );
+		await page.goto( `${ SCREEN }&tab=sites` );
+		await page.getByLabel( 'Site address' ).fill( 'http://localhost:9/' );
+		await page.getByLabel( 'User name' ).fill( 'nobody' );
+		await page.getByLabel( 'Application password' ).fill( 'abcd efgh ijkl mnop' );
+		await page.getByRole( 'button', { name: 'Add site and check it' } ).click();
+		await expect( page.locator( '.alc-notice' ) ).toContainText( 'was added, but the first check failed' );
+		const failed = page.locator( '.alc-sites-table tr[data-site]' ).first();
+		await expect( failed.locator( '.axle-badge--error' ) ).toHaveText( 'Could not be reached' );
+		await expect( failed.locator( '.alc-error' ) ).toContainText( 'could not be reached' );
+		const [ site ] = JSON.parse( wp( 'axle-license-tracker', 'hub', 'list', '--format=json' ) );
+		expect( site.failures ).toBe( 1 );
+		const next = Number( wpEval( `$s = get_option( "axle_license_tracker_hub_sites" ); echo $s[ "${ site.id }" ]["next"] - time();` ) );
+		expect( next ).toBeGreaterThan( 50 * 60 );
+		expect( next ).toBeLessThanOrEqual( 60 * 60 );
+		expect( wp( 'axle-license-tracker', 'hub', 'list', '--format=json' ) ).not.toContain( 'abcd efgh' );
+
+		// A site that keeps failing shows up in Site Health.
+		wpEval( `$s = get_option( "axle_license_tracker_hub_sites" ); $s[ "${ site.id }" ]["fails"] = 3; update_option( "axle_license_tracker_hub_sites", $s, false );` );
+		const health = JSON.parse( wpEval( '$t = apply_filters( "site_status_tests", array() ); echo wp_json_encode( call_user_func( $t["direct"]["axle_license_tracker_hub"]["test"] ) );' ) );
+		expect( health.status ).toBe( 'recommended' );
+		expect( health.description ).toContain( 'Could not be reached' );
+
+		wp( 'axle-license-tracker', 'hub', 'remove', site.id, '--yes' );
+
+		// With the test filter off, loopback and plain http are refused.
+		wp( 'option', 'update', 'alc_fixture_allow_private', '0' );
+		try {
+			await page.goto( `${ SCREEN }&tab=sites` );
+			await page.getByLabel( 'Site address' ).fill( 'https://localhost/' );
+			await page.getByLabel( 'User name' ).fill( 'nobody' );
+			await page.getByLabel( 'Application password' ).fill( 'abcd efgh ijkl mnop' );
+			await page.getByRole( 'button', { name: 'Add site and check it' } ).click();
+			await expect( page.locator( '.alc-notice' ) ).toContainText( 'points inside a private network' );
+			await expect( page.getByLabel( 'Site address' ) ).toHaveValue( 'https://localhost/' );
+			await expect( page.getByLabel( 'Application password' ) ).toHaveValue( '' );
+			expect( succeeds( 'axle-license-tracker', 'hub', 'add', 'http://example.com', '--username=a', '--password=b' ) ).toBe( false );
+			expect( listedIds() ).toHaveLength( 0 );
+		} finally {
+			wp( 'option', 'delete', 'alc_fixture_allow_private' );
+			wp( 'axle-license-tracker', 'hub', 'disable' );
+		}
+	} );
+
+	test( 'the report a License reporter reads has no emails and no paths', async () => {
+		people.push( 'alc-redact-reporter' );
+		succeeds( 'user', 'delete', 'alc-redact-reporter', '--yes' );
+		wp( 'user', 'create', 'alc-redact-reporter', 'alc-redact-reporter@example.com', '--role=axle_license_reporter', '--user_pass=reporter-pass-8' );
+		wp( 'axle-license-tracker', 'set', ID.edd, '--owner=Pat pat@agency.example', '--account-email=billing@example.com' );
+		const reporter = await appPasswordClient( 'alc-redact-reporter', 'Privacy check' );
+		try {
+			const report = await reporter.call( 'GET', '/axle-license-tracker/v1/report' );
+			expect( report.status ).toBe( 200 );
+			const body = JSON.stringify( report.body );
+			expect( body ).not.toMatch( /@example\.com|pat@agency|billing@/ );
+			expect( body ).not.toMatch( /\/var\/www|wp-content\/plugins\// );
+			expect( body ).not.toMatch( /ALCEDDKEY|sk_ALCFREEMIUSSECRET/ );
+			expect( report.body.components.find( ( component ) => component.id === ID.edd ).owner ).toBe( 'Pat' );
+		} finally {
+			await reporter.dispose();
+			wp( 'axle-license-tracker', 'set', ID.edd, '--owner=Bean There', '--account-email=billing@example.com' );
+		}
+	} );
+
+	test( 'copying the calendar link is announced and hookable', async ( { page } ) => {
+		wp( 'axle-license-tracker', 'feed', 'enable' );
+		try {
+			await page.addInitScript( () => {
+				Object.defineProperty( navigator, 'clipboard', { value: { writeText: () => Promise.resolve() }, configurable: true } );
+			} );
+			await page.goto( `${ SCREEN }&tab=costs` );
+			await page.evaluate( () => window.wp.hooks.addFilter( 'axleLicenseTracker.announce', 'e2e', ( text, kind ) => `${ kind }: ${ text }` ) );
+			await page.getByRole( 'button', { name: 'Copy link' } ).click();
+			await expect( page.locator( '#a11y-speak-assertive' ) ).toHaveText( 'copied: Link copied.' );
+		} finally {
+			wp( 'option', 'delete', 'axle_license_tracker_feed' );
+		}
+	} );
+
 	test( 'uninstall removes options, records, cron events and the role', () => {
 		const state = () =>
 			wpEval(
 				'echo wp_json_encode( array( get_option( "axle_license_tracker_settings", null ), get_option( "axle_license_tracker_detection", null ) !== null, count( get_posts( array( "post_type" => "alc_license", "post_status" => "any", "numberposts" => -1, "fields" => "ids" ) ) ) > 0, (bool) wp_next_scheduled( "axle_license_tracker_daily" ), (bool) get_role( "axle_license_reporter" ) ) );'
 			);
 		wp( 'option', 'update', 'axle_license_tracker_settings', '{"digest":true}', '--format=json' );
+		wp( 'option', 'update', 'axle_license_tracker_hub_sites', '{"s1":{"id":"s1"}}', '--format=json' );
+		wp( 'option', 'update', 'axle_license_tracker_hub_data_s1', '{"components":[]}', '--format=json' );
+		wp( 'option', 'update', 'axle_license_tracker_feed', '{"token":"x"}', '--format=json' );
+		wp( 'user', 'meta', 'update', '1', 'axle_license_tracker_steps_dismissed', '1' );
+		wpEval( 'wp_schedule_event( time() + 3600, "hourly", "axle_license_tracker_hub_sync" );' );
 		expect( state() ).toBe( '[{"digest":true},true,true,true,true]' );
 
 		// Run uninstall.php itself: `wp plugin uninstall` would delete the mounted source folder.
 		wpEval( 'define( "WP_UNINSTALL_PLUGIN", "axle-license-tracker/axle-license-tracker.php" ); include WP_PLUGIN_DIR . "/axle-license-tracker/uninstall.php";' );
 		expect( state() ).toBe( '[null,false,false,false,false]' );
+		expect( wpEval( 'global $wpdb; echo (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->options} WHERE option_name LIKE \'axle\\_license\\_tracker\\_%\'" );' ) ).toBe( '0' );
+		expect( wpEval( 'echo (int) wp_next_scheduled( "axle_license_tracker_hub_sync" );' ) ).toBe( '0' );
+		expect( wpEval( 'echo (int) metadata_exists( "user", 1, "axle_license_tracker_steps_dismissed" );' ) ).toBe( '0' );
 		expect( wpEval( 'global $wpdb; echo (int) $wpdb->get_var( "SELECT COUNT(*) FROM {$wpdb->postmeta} WHERE meta_key LIKE \'\\_alc\\_%\'" );' ) ).toBe( '0' );
 
 		// Activating again puts the role and the daily check back.

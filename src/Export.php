@@ -75,7 +75,7 @@ class Export {
 	 * @param string[] $cells Cells.
 	 * @return string
 	 */
-	private static function line( array $cells ): string {
+	public static function line( array $cells ): string {
 		return implode(
 			',',
 			array_map(

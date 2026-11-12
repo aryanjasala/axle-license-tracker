@@ -24,6 +24,7 @@ final class SettingsTest extends LicenseTestCase {
 				'recipients'    => array(),
 				'alerts'        => true,
 				'digest'        => false,
+				'hub'           => false,
 			),
 			( new Settings() )->all()
 		);

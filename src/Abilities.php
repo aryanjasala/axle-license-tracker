@@ -7,6 +7,9 @@
 
 namespace AryanX\Axle\LicenseTracker;
 
+use AryanX\Axle\LicenseTracker\Hub\Hub;
+use AryanX\Axle\LicenseTracker\Hub\Overview;
+
 defined( 'ABSPATH' ) || exit;
 
 /**
@@ -40,16 +43,25 @@ class Abilities implements Service {
 	private Details $details;
 
 	/**
+	 * The hub.
+	 *
+	 * @var Hub
+	 */
+	private Hub $hub;
+
+	/**
 	 * Sets up the abilities.
 	 *
 	 * @param Tracker $tracker Rows.
 	 * @param Report  $report  The report.
 	 * @param Details $details Manual details.
+	 * @param Hub     $hub     The hub.
 	 */
-	public function __construct( Tracker $tracker, Report $report, Details $details ) {
+	public function __construct( Tracker $tracker, Report $report, Details $details, Hub $hub ) {
 		$this->tracker = $tracker;
 		$this->report  = $report;
 		$this->details = $details;
+		$this->hub     = $hub;
 	}
 
 	/**
@@ -172,6 +184,88 @@ class Abilities implements Service {
 		);
 
 		$this->ability(
+			'get-hub-report',
+			__( 'Get the licenses of all sites', 'axle-license-tracker' ),
+			__( 'Every license on this site and on the remote sites in the hub: the sites and whether each could be reached, totals per currency and vendor, licenses renewing soon, and keys used on more than one site. Needs the hub to be on. Never includes license keys or the passwords of remote sites.', 'axle-license-tracker' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'days' => array(
+						'type'    => 'integer',
+						'minimum' => 0,
+						'maximum' => 365,
+						'default' => 30,
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array( 'type' => 'object' ),
+			array( $this, 'get_hub_report' ),
+			$can,
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'get-cost-forecast',
+			__( 'Get the cost of the next months', 'axle-license-tracker' ),
+			__( 'What the renewals of the next months will cost, per month, vendor and currency (never converted), with one-off items, items without a cost and items without a renewal date listed apart.', 'axle-license-tracker' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'months' => array(
+						'type'    => 'integer',
+						'minimum' => 1,
+						'maximum' => 24,
+						'default' => 12,
+					),
+					'sites'  => array(
+						'type'        => 'boolean',
+						'default'     => false,
+						'description' => __( 'Also count the remote sites of the hub.', 'axle-license-tracker' ),
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array( 'type' => 'object' ),
+			array( $this, 'get_forecast' ),
+			$can,
+			array(
+				'readonly'   => true,
+				'idempotent' => true,
+			)
+		);
+
+		$this->ability(
+			'sync-hub',
+			__( 'Fetch the remote sites again', 'axle-license-tracker' ),
+			__( 'Fetches the license report of the remote sites that are due, or all of them. Read only on the remote sites: nothing is changed there.', 'axle-license-tracker' ),
+			array(
+				'type'                 => 'object',
+				'properties'           => array(
+					'all' => array(
+						'type'    => 'boolean',
+						'default' => false,
+					),
+				),
+				'additionalProperties' => false,
+				'default'              => array(),
+			),
+			array( 'type' => 'object' ),
+			array( $this, 'sync_hub' ),
+			$can,
+			array(
+				'readonly'    => false,
+				'destructive' => false,
+				'idempotent'  => true,
+			)
+		);
+
+		$this->ability(
 			'recheck-licenses',
 			__( 'Check licenses again', 'axle-license-tracker' ),
 			__( 'Reads the stored license data again and asks WordPress for updates, as it does twice a day on its own. Never contacts a vendor or changes a key.', 'axle-license-tracker' ),
@@ -265,6 +359,86 @@ class Abilities implements Service {
 	 */
 	public function get_report(): array {
 		return $this->report->build();
+	}
+
+	/**
+	 * Ability: all sites in the hub.
+	 *
+	 * @param array|null $input Input.
+	 * @return array|\WP_Error
+	 */
+	public function get_hub_report( $input = null ) {
+		if ( ! $this->hub->enabled() ) {
+			return new \WP_Error( 'axle_license_tracker_hub_off', __( 'The hub is off. Turn it on under Plugins > Licenses > Sites.', 'axle-license-tracker' ), array( 'status' => 409 ) );
+		}
+
+		$rows = $this->hub->rows();
+		$days = max( 0, min( 365, (int) ( ( (array) $input )['days'] ?? 30 ) ) );
+		$out  = array(
+			'sites'      => array(),
+			'costs'      => Overview::costs( $rows ),
+			'expiring'   => array_map( array( self::class, 'hub_row' ), Overview::expiring( $rows, $days ) ),
+			'duplicates' => array_values( Overview::duplicates( $rows ) ),
+			'licenses'   => count( $rows ),
+		);
+		foreach ( $this->hub->sources() as $source ) {
+			$out['sites'][] = array(
+				'id'      => $source['id'],
+				'label'   => $source['label'],
+				'url'     => $source['url'],
+				'reached' => 0 === $source['fails'] && $source['ok'] > 0,
+				'error'   => $source['error'],
+				'fetched' => $source['fetched'] ? gmdate( 'c', $source['fetched'] ) : '',
+			);
+		}
+
+		return $out;
+	}
+
+	/**
+	 * A hub row without its internals.
+	 *
+	 * @param array $row Combined row.
+	 * @return array
+	 */
+	public static function hub_row( array $row ): array {
+		return array_intersect_key( $row, array_flip( array( 'site_label', 'name', 'vendor', 'state', 'renewal', 'days_left', 'cost', 'currency', 'cycle' ) ) );
+	}
+
+	/**
+	 * Ability: the cost forecast.
+	 *
+	 * @param array|null $input Input.
+	 * @return array
+	 */
+	public function get_forecast( $input = null ): array {
+		$input  = (array) $input;
+		$remote = ! empty( $input['sites'] ) && $this->hub->enabled();
+
+		return Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), gmdate( 'Y-m-d' ), (int) ( $input['months'] ?? 12 ) );
+	}
+
+	/**
+	 * Ability: fetch the remote sites.
+	 *
+	 * @param array|null $input Input.
+	 * @return array|\WP_Error
+	 */
+	public function sync_hub( $input = null ) {
+		if ( ! $this->hub->enabled() ) {
+			return new \WP_Error( 'axle_license_tracker_hub_off', __( 'The hub is off. Turn it on under Plugins > Licenses > Sites.', 'axle-license-tracker' ), array( 'status' => 409 ) );
+		}
+
+		$out = array();
+		foreach ( $this->hub->sync_due( ! empty( ( (array) $input )['all'] ) ) as $id => $result ) {
+			$out[] = array(
+				'id'      => $id,
+				'reached' => ! is_wp_error( $result ),
+				'message' => is_wp_error( $result ) ? $result->get_error_message() : '',
+			);
+		}
+
+		return array( 'synced' => $out );
 	}
 
 	/**

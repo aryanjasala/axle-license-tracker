@@ -179,7 +179,7 @@ class Privacy implements Service {
 		wp_add_privacy_policy_content(
 			'Axle License Tracker',
 			wp_kses_post(
-				'<p>' . __( 'Administrators can note who owns each premium plugin or theme license, with an owner email and the email of the vendor account. These are kept with the license details on this site, together with the user who last saved them, and are used to send renewal reminders. License keys are never stored, only a short fingerprint. Nothing is sent to other services.', 'axle-license-tracker' ) . '</p>'
+				'<p>' . __( 'Administrators can note who owns each premium plugin or theme license, with an owner email and the email of the vendor account. These are kept with the license details on this site, together with the user who last saved them, and are used to send renewal reminders. License keys are never stored, only a short fingerprint.', 'axle-license-tracker' ) . '</p><p>' . __( 'If you turn on the hub, this site fetches the license report of each site you add, once a day, with the application password you gave it. The report holds product names, license states, renewal dates, costs and key fingerprints, and no email addresses. Passwords are stored encrypted on this site. If you turn on the calendar feed, anyone who has its secret link can read renewal dates and costs. Nothing else is sent to other services.', 'axle-license-tracker' ) . '</p>'
 			)
 		);
 	}

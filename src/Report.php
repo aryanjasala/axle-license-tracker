@@ -91,6 +91,30 @@ class Report {
 		}
 		$entry['as_of'] = gmdate( 'c', (int) $row['as_of'] );
 
+		if ( ! $full ) {
+			$entry = self::redact( $entry );
+		}
+
+		return $entry;
+	}
+
+	/**
+	 * Takes out of a report entry what a License reporter must not see: an email
+	 * address in a free-text field, and any server path or address inside a note.
+	 *
+	 * @param array $entry Report entry.
+	 * @return array
+	 */
+	public static function redact( array $entry ): array {
+		foreach ( array( 'owner', 'plan', 'purchase_source', 'vendor', 'state_note' ) as $field ) {
+			if ( ! isset( $entry[ $field ] ) || ! is_string( $entry[ $field ] ) ) {
+				continue;
+			}
+			$text            = preg_replace( '/[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}/', '', $entry[ $field ] );
+			$text            = preg_replace( '#(?:[A-Za-z]:)?[\\/](?:[\w.\-]+[\\/])+[\w.\-]*#', '', (string) $text );
+			$entry[ $field ] = substr( trim( (string) $text ), 0, 300 );
+		}
+
 		return $entry;
 	}
 }
