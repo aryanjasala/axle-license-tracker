@@ -39,14 +39,27 @@ Part of Axle by AryanX, a family of plugins for running WordPress sites safely.
 
 * Add what detection cannot know: renewal date, cost and currency, billing cycle, owner, seats, where the key is managed, invoice link, notes. What you enter wins over what was detected, and the list shows which is which.
 * Yearly cost per currency, never converted.
+* A **Costs** tab adds up what the next 12 months of renewals will cost, per month, vendor and currency, lists what it could not add up (no cost, no date, one-off), and downloads as CSV.
 * Reminder emails 30, 14, 7 and 1 days before a renewal date, each sent once, to the site admin and the license's owner. An email when a license expires or updates get blocked. A monthly digest if you want one.
+
+**Subscribe your calendar:**
+
+* Turn on the calendar feed to get a private link that Google Calendar, Apple Calendar or Outlook can subscribe to. Each renewal is an all-day event with the product, vendor and cost, and a reminder a week before.
+* The link is long and random, off by default, and you can replace it at any time. Events never hold a license key, a fingerprint or an email address.
+
+**Look after many sites from one:**
+
+* Turn on the hub under Plugins > Licenses > Settings, then add each client site with its address and an application password of a user with the License reporter role there.
+* One screen shows every license of every site: state, renewal date and cost, with filters and search, what expires in 30 days, cost per month and vendor in each currency, and which sites could not be reached and why.
+* It spots the same license key on more sites than its plan allows, or simply on 6 sites when the vendor's reader does not know the limit.
+* The hub only reads. Passwords are stored encrypted, only https addresses are allowed, private and loopback addresses are refused, and removing a site deletes its password and data.
 
 **Also:**
 
 * A License column on the Plugins screen and a dashboard widget with the next renewals.
 * A Site Health check: critical when an update is blocked.
 * CSV and JSON export.
-* A read-only REST report and a License reporter role, for an agency site that collects reports from client sites.
+* A read-only REST report and a License reporter role, for an agency site that collects reports from client sites. The report holds no emails, paths or notes.
 * WP-CLI for everything, abilities for AI agents (WordPress 6.9+), and privacy export and erase.
 
 Free and open source under the GPL. No pro version, no upsells, no ads in wp-admin, no tracking. And it stays that way.
@@ -62,6 +75,8 @@ The plugin never stores, shows, sends or logs a license key. It reads a vendor's
 * `wp axle-license-tracker expiring [--days=30]`, `show <component>`, `export [--format=csv|json]`.
 * `wp axle-license-tracker set <component> --renewal=2027-03-01 --cost=59 --currency=USD --cycle=yearly --owner="Client"` adds details.
 * `wp axle-license-tracker ignore <component> [--note=] [--undo]` and `remind [--dry-run]`.
+* `wp axle-license-tracker costs [--months=12] [--sites] [--format=csv]` for what the next months cost.
+* `wp axle-license-tracker hub add|list|remove|sync|licenses|enable|disable` for the hub, and `feed status|enable|disable|regenerate` for the calendar feed.
 
 = For developers =
 
@@ -69,7 +84,9 @@ Every default, limit, list and message has a filter, and every change fires an a
 
 == External services ==
 
-None. The plugin makes no requests of its own. "Check again" asks WordPress to check for plugin and theme updates, which WordPress does twice a day anyway; that request goes to WordPress.org and to any vendor updater already installed on the site.
+Only when you turn the hub on and add a site. Then, about once a day for each site you added, this site sends one read-only request to that site's `/wp-json/axle-license-tracker/v1/report` (or `?rest_route=`) address, with the user name and application password you gave it. The answer lists product names, license states, renewal dates, costs and key fingerprints. Nothing is sent to anyone else, and you choose every address.
+
+With the hub off, the plugin makes no requests of its own. "Check again" asks WordPress to check for plugin and theme updates, which WordPress does twice a day anyway; that request goes to WordPress.org and to any vendor updater already installed on the site.
 
 == Frequently Asked Questions ==
 
@@ -87,11 +104,19 @@ The vendor did not store when it last checked the license, so the age is counted
 
 = Can I see all my client sites in one place? =
 
-Not yet in this version. Each site serves a read-only report at `/wp-json/axle-license-tracker/v1/report` to a user with the License reporter role, which can read that and nothing else. A hub screen that collects those reports is planned.
+Yes. Turn on the hub under Plugins > Licenses > Settings, install the plugin on each client site, create a user with the License reporter role there (it can read the license report and nothing else), make an application password for it and add the site on the Sites tab. The hub reads each site once a day and never changes anything on it.
+
+= Is the hub safe to use with client sites? =
+
+The hub sends one read-only request per site. The application password is stored encrypted with a key derived from your site's salts, it is never shown again or included in any export, and removing a site deletes it. Only https addresses are allowed, and addresses inside a private network are refused.
+
+= How does the calendar feed stay private? =
+
+The feed is off until you turn it on. Its address holds a long random token, so only people with the link can read it. Events hold the product, vendor, cost and site, never keys, fingerprints or emails. If the link leaks, make a new one and the old one stops working at once.
 
 = Does it work on multisite? =
 
-Yes, per site. Plugins are network-wide on multisite, so every site lists the same plugins. A Network Admin screen is planned.
+Yes, per site. Plugins are network-wide on multisite, so every site lists the same plugins, and each site has its own hub and calendar feed. A Network Admin screen is planned.
 
 = Does it slow down the site? =
 
