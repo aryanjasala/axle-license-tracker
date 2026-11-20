@@ -151,6 +151,12 @@
 	max-width: 100%;
 }
 
+/* Screen-reader text is absolutely positioned. In a scroll box that is not positioned it escapes the box
+   and widens the page on WordPress 6.6, so the box is the containing block. */
+.alc-wrap .axle-scroll {
+	position: relative;
+}
+
 .alc-wrap .alc-confirm[hidden],
 .alc-wrap [hidden] {
 	display: none;
