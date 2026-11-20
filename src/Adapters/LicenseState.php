@@ -168,12 +168,12 @@ final class LicenseState {
 	}
 
 	/**
-	 * Whether a Y-m-d date is before today (UTC).
+	 * Whether a Y-m-d date is before today in the site's time zone.
 	 *
 	 * @param string $date Y-m-d, lifetime or ''.
 	 * @return bool
 	 */
 	public static function is_past( string $date ): bool {
-		return (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) && $date < gmdate( 'Y-m-d' );
+		return (bool) preg_match( '/^\d{4}-\d{2}-\d{2}$/', $date ) && $date < current_time( 'Y-m-d' );
 	}
 }

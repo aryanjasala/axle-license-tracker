@@ -464,24 +464,16 @@ class Page implements Service {
 			return;
 		}
 
-		echo '<div class="axle-scroll" tabindex="0" role="region" aria-label="' . esc_attr__( 'Plugins and themes table', 'axle-license-tracker' ) . '"><table class="widefat striped alc-table"><caption class="screen-reader-text">' . esc_html__( 'Plugins and themes with their license state and update risk', 'axle-license-tracker' ) . '</caption><thead><tr>';
-		foreach ( array(
-			__( 'Plugin or theme', 'axle-license-tracker' ),
-			__( 'Type', 'axle-license-tracker' ),
-			__( 'Vendor', 'axle-license-tracker' ),
-			__( 'License', 'axle-license-tracker' ),
-			__( 'Updates', 'axle-license-tracker' ),
-			__( 'Renews', 'axle-license-tracker' ),
-			__( 'Cost', 'axle-license-tracker' ),
-			__( 'Owner', 'axle-license-tracker' ),
-		) as $heading ) {
-			echo '<th scope="col">' . esc_html( $heading ) . '</th>';
+		// Core's list-table markup: below 783 px each row becomes a card with a toggle for the details.
+		echo '<table class="wp-list-table widefat fixed striped alc-table"><caption class="screen-reader-text">' . esc_html__( 'Plugins and themes with their license state and update risk', 'axle-license-tracker' ) . '</caption><thead><tr>';
+		foreach ( self::columns() as $key => $heading ) {
+			printf( '<th scope="col" class="manage-column column-%1$s%2$s">%3$s</th>', esc_attr( $key ), 'name' === $key ? ' column-primary' : '', esc_html( $heading ) );
 		}
 		echo '</tr></thead><tbody>';
 		foreach ( $rows as $row ) {
 			$this->render_row( $row );
 		}
-		echo '</tbody></table></div>';
+		echo '</tbody></table>';
 
 		$this->render_exports();
 	}
@@ -670,6 +662,22 @@ class Page implements Service {
 	}
 
 	/**
+	 * The table's columns.
+	 *
+	 * @return array<string, string> Key => heading.
+	 */
+	private static function columns(): array {
+		return array(
+			'name'    => __( 'Plugin or theme', 'axle-license-tracker' ),
+			'vendor'  => __( 'Vendor', 'axle-license-tracker' ),
+			'license' => __( 'License', 'axle-license-tracker' ),
+			'updates' => __( 'Updates', 'axle-license-tracker' ),
+			'renews'  => __( 'Renews', 'axle-license-tracker' ),
+			'cost'    => __( 'Cost', 'axle-license-tracker' ),
+		);
+	}
+
+	/**
 	 * One table row.
 	 *
 	 * @param array $row Row.
@@ -694,11 +702,33 @@ class Page implements Service {
 			esc_attr( $row['vendor'] )
 		);
 
-		// Component.
-		echo '<td class="alc-col-name"><strong>' . esc_html( $row['name'] ) . '</strong> <span class="alc-muted">' . esc_html( $row['version'] ) . '</span>';
+		$columns = self::columns();
+		$colname = static function ( string $key ) use ( $columns ): string {
+			return ' data-colname="' . esc_attr( $columns[ $key ] ) . '"';
+		};
+
+		// Name, with type and owner underneath and the row actions.
+		echo '<td class="column-name column-primary has-row-actions"><strong>' . esc_html( $row['name'] ) . '</strong> <span class="alc-muted">' . esc_html( $row['version'] ) . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
 		if ( $row['ignored'] ) {
 			echo ' <span class="axle-badge axle-badge--neutral alc-tag">' . esc_html__( 'Ignored', 'axle-license-tracker' ) . '</span>';
 		}
+		$meta = Messages::get( 'type_' . $row['type'] ) . ' ' . ( 'theme' === $row['kind'] ? __( 'theme', 'axle-license-tracker' ) : __( 'plugin', 'axle-license-tracker' ) );
+		if ( 'bundled' === $row['type'] ) {
+			/* translators: %s: theme name. */
+			$meta .= ', ' . sprintf( __( 'with %s', 'axle-license-tracker' ), $row['bundled_by'] );
+		}
+		if ( '' !== $row['owner'] ) {
+			/* translators: %s: owner name. */
+			$meta .= ' · ' . sprintf( __( 'Owner: %s', 'axle-license-tracker' ), $row['owner'] );
+		}
+		if ( $row['seats'] && $row['seats_used'] ) {
+			/* translators: 1: seats in use, 2: seats bought. */
+			$meta .= ' · ' . sprintf( __( 'Seats: %1$d of %2$d used', 'axle-license-tracker' ), $row['seats_used'], $row['seats'] );
+		} elseif ( $row['seats'] ) {
+			/* translators: %d: seats bought. */
+			$meta .= ' · ' . sprintf( _n( '%d seat', '%d seats', $row['seats'], 'axle-license-tracker' ), $row['seats'] );
+		}
+		echo '<br><span class="alc-muted alc-meta">' . esc_html( $meta ) . '</span>';
 		echo '<div class="row-actions alc-row-actions">';
 		$links = array();
 		foreach ( $actions as $key => $action ) {
@@ -713,18 +743,10 @@ class Page implements Service {
 			);
 		}
 		echo implode( ' | ', $links ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
-		echo '</div></td>';
-
-		// Type.
-		$type = esc_html( Messages::get( 'type_' . $row['type'] ) ) . ' <span class="alc-muted">' . esc_html( 'theme' === $row['kind'] ? __( 'theme', 'axle-license-tracker' ) : __( 'plugin', 'axle-license-tracker' ) ) . '</span>';
-		if ( 'bundled' === $row['type'] ) {
-			/* translators: %s: theme name. */
-			$type .= '<br><span class="alc-muted">' . esc_html( sprintf( __( 'with %s', 'axle-license-tracker' ), $row['bundled_by'] ) ) . '</span>';
-		}
-		echo '<td>' . $type . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped above.
+		echo '</div><button type="button" class="toggle-row"><span class="screen-reader-text">' . esc_html__( 'Show more details', 'axle-license-tracker' ) . '</span></button></td>';
 
 		// Vendor.
-		echo '<td>' . esc_html( $row['vendor'] ) . Display::source( $row, 'vendor' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
+		echo '<td class="column-vendor"' . $colname( 'vendor' ) . '>' . esc_html( $row['vendor'] ) . Display::source( $row, 'vendor' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		if ( '' !== $row['sdk'] && $row['sdk'] !== $row['vendor'] ) {
 			echo '<br><span class="alc-muted">' . esc_html( $row['sdk'] ) . '</span>';
 		}
@@ -734,7 +756,7 @@ class Page implements Service {
 		echo '</td>';
 
 		// License.
-		echo '<td>' . Display::state( $row['state'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
+		echo '<td class="column-license"' . $colname( 'license' ) . '>' . Display::state( $row['state'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		if ( 'not-applicable' !== $row['state'] ) {
 			echo '<br><span class="alc-muted alc-age">' . Display::age( $row ) . '</span>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		}
@@ -752,14 +774,14 @@ class Page implements Service {
 		echo '</td>';
 
 		// Updates.
-		echo '<td>' . Display::risk( $row['risk'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
+		echo '<td class="column-updates"' . $colname( 'updates' ) . '>' . Display::risk( $row['risk'] ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 		foreach ( $row['risk_signals'] as $signal ) {
 			echo '<br><span class="alc-muted">' . esc_html( $signal ) . '</span>';
 		}
 		echo '</td>';
 
 		// Renews.
-		echo '<td>';
+		echo '<td class="column-renews"' . $colname( 'renews' ) . '>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in colname().
 		if ( '' !== $row['renewal'] ) {
 			echo Parts::date( $row['renewal'] ) . Display::source( $row, 'renewal' ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Escaped in date() and source().
 		} elseif ( 'lifetime' === $row['cycle'] ) {
@@ -772,18 +794,7 @@ class Page implements Service {
 
 		// Cost.
 		$cycles = self::cycles();
-		echo '<td>' . Display::cost( $row['cost'], $row['currency'], '' !== $row['cycle'] ? '/ ' . ( $cycles[ $row['cycle'] ] ?? $row['cycle'] ) : '' ) . '</td>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
-
-		// Owner.
-		echo '<td>' . esc_html( $row['owner'] );
-		if ( $row['seats'] && $row['seats_used'] ) {
-			/* translators: 1: seats in use, 2: seats bought. */
-			echo '<br><span class="alc-muted">' . esc_html( sprintf( __( 'Seats: %1$d of %2$d used', 'axle-license-tracker' ), $row['seats_used'], $row['seats'] ) ) . '</span>';
-		} elseif ( $row['seats'] ) {
-			/* translators: %d: seats bought. */
-			echo '<br><span class="alc-muted">' . esc_html( sprintf( _n( '%d seat', '%d seats', $row['seats'], 'axle-license-tracker' ), $row['seats'] ) ) . '</span>';
-		}
-		echo '</td></tr>';
+		echo '<td class="column-cost"' . $colname( 'cost' ) . '>' . Display::cost( $row['cost'], $row['currency'], '' !== $row['cycle'] ? '/ ' . ( $cycles[ $row['cycle'] ] ?? $row['cycle'] ) : '' ) . '</td></tr>'; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- Display escapes.
 	}
 
 	/**
@@ -874,7 +885,6 @@ class Page implements Service {
 		echo '<input type="hidden" name="action" value="axle_license_tracker_save"><input type="hidden" name="component" value="' . esc_attr( $id ) . '">';
 		wp_nonce_field( 'axle_license_tracker_save' );
 		echo '<section class="axle-card"><h2 class="axle-card__title">' . esc_html__( 'Details', 'axle-license-tracker' ) . '</h2>';
-		echo '<table class="form-table" role="presentation"><tbody>';
 
 		$labels  = array(
 			'vendor'          => __( 'Vendor', 'axle-license-tracker' ),
@@ -907,7 +917,7 @@ class Page implements Service {
 			'seats'      => 'detected' === ( $row['sources']['seats'] ?? '' ) ? (string) $row['seats'] : '',
 		);
 
-		foreach ( Details::fields() as $field => $kind ) {
+		$field_row = function ( string $field, string $kind ) use ( $errors, $labels, $help, $detects, $value ): void {
 			$name     = 'details[' . $field . ']';
 			$field_id = 'alc-' . str_replace( '_', '-', $field );
 			$describe = array();
@@ -982,8 +992,29 @@ class Page implements Service {
 				echo '<p class="description" id="' . esc_attr( $field_id . '-help' ) . '">' . esc_html( $help[ $field ] ) . '</p>';
 			}
 			echo '</td></tr>';
+		};
+
+		// What the renewal reminders need comes first; the rest sits under "More details".
+		$first = (array) apply_filters( 'axle_license_tracker_edit_first_fields', array( 'renewal', 'cost', 'currency', 'cycle', 'owner', 'owner_email' ) );
+		$first = array_values( array_intersect( $first, array_keys( Details::fields() ) ) );
+		$rest  = array_values( array_diff( array_keys( Details::fields() ), $first ) );
+
+		echo '<table class="form-table alc-first" role="presentation"><tbody>';
+		foreach ( $first as $field ) {
+			$field_row( $field, Details::fields()[ $field ] );
 		}
-		echo '</tbody></table></section>';
+		echo '</tbody></table>';
+
+		if ( $rest ) {
+			// Open it when a field inside has an error, so the message is not hidden.
+			printf( '<details class="alc-more"%s><summary>%s</summary>', array_intersect( $rest, array_keys( $errors ) ) ? ' open' : '', esc_html__( 'More details', 'axle-license-tracker' ) );
+			echo '<table class="form-table" role="presentation"><tbody>';
+			foreach ( $rest as $field ) {
+				$field_row( $field, Details::fields()[ $field ] );
+			}
+			echo '</tbody></table></details>';
+		}
+		echo '</section>';
 		submit_button( __( 'Save details', 'axle-license-tracker' ) );
 		echo '</form>';
 

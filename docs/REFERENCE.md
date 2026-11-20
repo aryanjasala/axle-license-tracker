@@ -60,7 +60,21 @@ A daily cron event (`axle_license_tracker_daily`) checks every tracked component
 
 - a reminder before a renewal date, at 30, 14, 7 and 1 days by default (Plugins > Licenses > Reminders, or `axle_license_tracker_reminder_days`). A date 7 days out gets the 7-day reminder only, not the 30 and 14 ones as well.
 - an alert when a license is expired, or its updates are blocked or at risk (on by default)
+- an email when a license goes from expired to valid and the site is behind a newer version (with the alerts)
 - a monthly digest of every license (off by default)
+
+Dates in emails and notices use the site's date format (Settings > General), and "today" is the site's time zone, so a renewal near midnight lands in the same month in the reminders and the forecast.
+
+## Updates around a renewal
+
+Two moments where a license and an update meet. Neither asks a vendor anything: it reads the update data WordPress already holds and the stored license state.
+
+- **Before the date.** The 14, 7 and 1 day reminders add "Gravity Forms 2.9.4 is available now and will not be after 23 November 2026: rehearse it, then update." when the update has a download link and the stored license state is not expired, invalid or missing. The 30 day reminder does not, because the date is still far away (`axle_license_tracker_last_chance_days`).
+- **After a renewal.** When a license changes from expired to valid and the installed version is behind the newest one the update data or the vendor's cache names, a notice on Plugins and Themes and one email say "Renewed. Rehearse the jump from 2.6.1 to 2.9.4 first." The email goes out once per newest version (with the alerts setting). The notice has a Dismiss link and goes away when the site is up to date.
+
+The link follows the person: with Update Rehearsal active, on the main site, and the person allowed to use it (its `update_rehearsal_capability`), it opens `tools.php?page=update-rehearsal&kind=update&plugin=<file>`. Otherwise people who can update plugins get a plain update link, and everyone else gets none. Emails are sent one per person for this reason; a recipient with no account gets the text and no link. Themes always get the plain link.
+
+On Plugins, the update row of a plugin with no download link says why: "Blocked: the Elementor Pro license expired on 3 October." People who manage licenses also see a Renew link (the account link, else the vendor's license page) and the owner. The Themes screen and the network themes screen say the same.
 
 Each reminder goes out once per component, date and reminder day, and each alert once until the state changes. That is kept in the component's record, so a second cron run or a cron hiccup sends nothing twice. Reminders go to the site admin email, the extra recipients in the settings and the license's owner email. Ignored components get none.
 
@@ -114,6 +128,13 @@ Off by default. On the Costs tab, "Turn on the calendar feed" makes a private li
 | `axle_license_tracker_reminder_days` | `( int[] $days )` | Days before a renewal date for reminders. Default the setting, 30, 14, 7 and 1 |
 | `axle_license_tracker_reminder_recipients` | `( string[] $recipients, ?array $row, string $kind )` | Who gets a reminder, alert or digest. Kind is `renewal`, `alert` or `digest` |
 | `axle_license_tracker_reminder_email` | `( array $email, array $row, int\|string $threshold, string $kind )` | Subject and body of a reminder or alert |
+| `axle_license_tracker_last_chance_days` | `( int $days )` | Reminder days that carry the "available now, not after the date" line. Default 14 |
+| `axle_license_tracker_update_downloadable` | `( bool $downloadable, array $row, string $to )` | Whether the newer version can be downloaded now. Default: the update has a package and the license is not expired, invalid or missing |
+| `axle_license_tracker_update_link` | `( array $link, array $row, int $user_id )` | The link a person gets: `url`, `label`, `kind` (`rehearse` or `update`) |
+| `axle_license_tracker_rehearsal_active` | `( bool $active )` | Whether Update Rehearsal counts as active. Default true when its plugin file is loaded |
+| `axle_license_tracker_renewed_email` | `( array $email, array $row, string $from, string $to )` | Subject and body of the "renewed, rehearse the jump" email |
+| `axle_license_tracker_blocked_update_message` | `( string $text, array $row )` | The sentence under a blocked update on Plugins and Themes |
+| `axle_license_tracker_edit_first_fields` | `( string[] $fields )` | The fields shown before "More details" on Edit details. Default renewal, cost, currency, cycle, owner, owner_email |
 | `axle_license_tracker_digest_enabled` | `( bool $enabled )` | Whether the monthly digest goes out. Default the setting, off |
 | `axle_license_tracker_vendor_license_url` | `( string $url, array $row )` | Where the "Open license page" row action goes |
 | `axle_license_tracker_purchase_sources` | `( array $sources )` | The "Bought from" choices: key => `label`, `flag` |
@@ -146,6 +167,7 @@ Every filtered value is checked again afterwards: numbers are clamped, unknown s
 | `axle_license_tracker_license_expired` | `( array $row )` | A license was found expired |
 | `axle_license_tracker_license_expiring` | `( array $row, int $days )` | A renewal reminder went out |
 | `axle_license_tracker_reminder_sent` | `( ?array $row, int\|string $threshold, string[] $recipients )` | Any email went out: the reminder day, `expired`, `blocked`, `at-risk` or `digest` |
+| `axle_license_tracker_renewed` | `( array $row, string $from, string $to )` | A renewed license left the site behind a newer version. The email listens to this once per newest version |
 | `axle_license_tracker_details_saved` | `( array $component, array $fields, int $user_id )` | Details were saved by hand |
 | `axle_license_tracker_ignored` | `( string $id, bool $ignored, string $note, int $user_id )` | A component was ignored or tracked again |
 | `axle_license_tracker_hub_toggled` | `( bool $enabled )` | The hub was turned on or off |
@@ -264,7 +286,7 @@ curl -u agent:"app password" "https://example.com/wp-json/wp-abilities/v1/abilit
 | `axle_license_tracker_steps_dismissed` user meta | Whether a person hid the Get started card |
 | `AXLE_LICENSE_TRACKER_HUB_KEY` constant (optional) | Extra secret mixed into the key that encrypts hub passwords. Define it in wp-config.php |
 | `axle_license_tracker_detection` option (not autoloaded) | Scan results per component version, when each updater last answered, installed versions and since when, the last digest month |
-| `alc_license` posts (not public, not in REST) | One per tracked component. The component id is the title and `_alc_component`. Meta: the manual fields (`_alc_renewal`, `_alc_cost`, ...), `_alc_key_fp`, `_alc_ignored`, `_alc_reminders_sent`, `_alc_alerts_sent`, `_alc_state`, `_alc_risk`, `_alc_state_since`, `_alc_saved_by`, `_alc_saved_at` |
+| `alc_license` posts (not public, not in REST) | One per tracked component. The component id is the title and `_alc_component`. Meta: the manual fields (`_alc_renewal`, `_alc_cost`, ...), `_alc_key_fp`, `_alc_ignored`, `_alc_reminders_sent`, `_alc_alerts_sent`, `_alc_state`, `_alc_risk`, `_alc_state_since`, `_alc_renewed`, `_alc_saved_by`, `_alc_saved_at` |
 | `axle_license_reporter` role, `axle_license_tracker_read_report` capability | Added on activation |
 | `axle_license_tracker_daily`, `axle_license_tracker_scan` and `axle_license_tracker_hub_sync` cron events | The daily check, the background scan and the hourly hub run (only while the hub is on) |
 

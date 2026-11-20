@@ -132,6 +132,19 @@
       "steps": [{ "waitFor": ".alc-pill" }]
     },
     {
+      "name": "Edit license details with More details open",
+      "url": "/wp-admin/plugins.php?page=axle-license-tracker&edit=plugin%3Aalc-edd-fixture%2Falc-edd-fixture.php",
+      "steps": [{ "click": ".alc-more summary" }, { "waitFor": "#alc-auto-renew" }]
+    },
+    {
+      "name": "Plugins screen with a blocked update and a renewed notice",
+      "setup": [{ "js": "seed.js", "call": "seedRenewed" }],
+      "url": "/wp-admin/plugins.php",
+      "include": [".alc-renewed-notice", "tr.plugin-update-tr .alc-blocked-update"],
+      "steps": [{ "waitFor": ".alc-renewed-notice" }],
+      "cleanup": [{ "js": "seed.js", "call": "clearRenewed" }]
+    },
+    {
       "name": "Licenses dashboard widget",
       "url": "/wp-admin/index.php",
       "include": ["#axle_license_tracker"],

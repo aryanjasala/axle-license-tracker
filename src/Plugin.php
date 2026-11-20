@@ -106,6 +106,13 @@ final class Plugin {
 	private Reminders $reminders;
 
 	/**
+	 * Updates around a renewal.
+	 *
+	 * @var Renewal
+	 */
+	private Renewal $renewal;
+
+	/**
 	 * Exports.
 	 *
 	 * @var Export
@@ -171,7 +178,8 @@ final class Plugin {
 			$this->settings
 		);
 		$this->report    = new Report( $this->tracker );
-		$this->reminders = new Reminders( $this->tracker, $this->licenses, $this->settings, $this->store );
+		$this->renewal   = new Renewal( $this->tracker, $this->updates, $this->licenses );
+		$this->reminders = new Reminders( $this->tracker, $this->licenses, $this->settings, $this->store, $this->renewal );
 		$this->export    = new Export( $this->report );
 		$sites           = new Sites();
 		$this->hub       = new Hub( $this->settings, $sites, new Remote( $sites ), $this->tracker );
@@ -217,6 +225,7 @@ final class Plugin {
 			$this->scanner,
 			$this->licenses,
 			$this->reminders,
+			$this->renewal,
 			new Privacy( $this->licenses ),
 			$this->hub,
 			$this->calendar,

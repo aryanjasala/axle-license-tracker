@@ -47,18 +47,27 @@ class Reminders implements Service {
 	private Store $store;
 
 	/**
+	 * Updates around a renewal, for the "take it before the date" line.
+	 *
+	 * @var Renewal|null
+	 */
+	private ?Renewal $renewal;
+
+	/**
 	 * Sets up reminders.
 	 *
-	 * @param Tracker  $tracker  Rows.
-	 * @param Licenses $licenses Per-component records.
-	 * @param Settings $settings Settings.
-	 * @param Store    $store    Detection store.
+	 * @param Tracker      $tracker  Rows.
+	 * @param Licenses     $licenses Per-component records.
+	 * @param Settings     $settings Settings.
+	 * @param Store        $store    Detection store.
+	 * @param Renewal|null $renewal  Updates around a renewal.
 	 */
-	public function __construct( Tracker $tracker, Licenses $licenses, Settings $settings, Store $store ) {
+	public function __construct( Tracker $tracker, Licenses $licenses, Settings $settings, Store $store, ?Renewal $renewal = null ) {
 		$this->tracker  = $tracker;
 		$this->licenses = $licenses;
 		$this->settings = $settings;
 		$this->store    = $store;
+		$this->renewal  = $renewal;
 	}
 
 	/**
@@ -67,6 +76,7 @@ class Reminders implements Service {
 	public function register(): void {
 		add_action( Lifecycle::DAILY, array( $this, 'cron' ) );
 		add_action( 'admin_init', array( Lifecycle::class, 'schedule' ) );
+		add_action( 'axle_license_tracker_renewed', array( $this, 'send_renewed' ), 10, 3 );
 	}
 
 	/**
@@ -217,8 +227,9 @@ class Reminders implements Service {
 	 * @return array
 	 */
 	private function message( array $row, string $kind, $threshold ): array {
-		$site = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
-		$link = admin_url( 'plugins.php?page=' . Admin\Page::SLUG . '&edit=' . rawurlencode( $row['id'] ) );
+		$site   = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
+		$link   = admin_url( 'plugins.php?page=' . Admin\Page::SLUG . '&edit=' . rawurlencode( $row['id'] ) );
+		$action = false;
 
 		if ( 'renewal' === $kind ) {
 			$subject = sprintf(
@@ -230,8 +241,19 @@ class Reminders implements Service {
 			);
 			$lines = array(
 				/* translators: 1: plugin or theme name, 2: date. */
-				sprintf( __( 'The license for %1$s renews on %2$s.', 'axle-license-tracker' ), $row['name'], $row['renewal'] ),
+				sprintf( __( 'The license for %1$s renews on %2$s.', 'axle-license-tracker' ), $row['name'], Format::date( $row['renewal'] ) ),
 			);
+			/**
+			 * Filters how many days before a renewal the "available now, not after the date" line appears.
+			 *
+			 * @param int $days Default 14, so the 14, 7 and 1 day reminders carry it and the 30 day one does not.
+			 */
+			$last_chance_days = (int) apply_filters( 'axle_license_tracker_last_chance_days', 14 );
+			$last_chance      = $this->renewal && (int) $threshold <= $last_chance_days ? $this->renewal->last_chance_line( $row ) : '';
+			if ( '' !== $last_chance ) {
+				$lines[] = $last_chance;
+				$action  = true;
+			}
 			if ( null !== $row['cost'] && '' !== $row['currency'] ) {
 				/* translators: 1: amount, 2: currency code. */
 				$lines[] = sprintf( __( 'Cost: %1$s %2$s.', 'axle-license-tracker' ), Details::from_minor( (int) $row['cost'], $row['currency'] ), $row['currency'] );
@@ -294,6 +316,73 @@ class Reminders implements Service {
 			'subject'    => $email['subject'],
 			'body'       => $email['body'],
 			'recipients' => $this->recipients( $row, $kind ),
+			'row'        => $action ? $row : null,
+		);
+	}
+
+	/**
+	 * Sends the "renewed, rehearse the jump" email.
+	 *
+	 * @param array  $row  Component row.
+	 * @param string $from Installed version.
+	 * @param string $to   Newest version known.
+	 */
+	public function send_renewed( array $row, string $from, string $to ): void {
+		if ( ! $this->settings->get( 'alerts' ) ) {
+			return;
+		}
+		$site  = wp_specialchars_decode( (string) get_bloginfo( 'name' ), ENT_QUOTES );
+		$lines = array(
+			/* translators: 1: plugin or theme name. */
+			sprintf( __( 'The license for %1$s is valid again.', 'axle-license-tracker' ), $row['name'] ),
+			sprintf(
+				/* translators: 1: installed version, 2: newest version. */
+				__( 'Renewed. Rehearse the jump from %1$s to %2$s first, then update.', 'axle-license-tracker' ),
+				(string) $from,
+				(string) $to
+			),
+		);
+		if ( '' !== $row['owner'] ) {
+			/* translators: %s: owner name. */
+			$lines[] = sprintf( __( 'Owner: %s.', 'axle-license-tracker' ), $row['owner'] );
+		}
+		/* translators: %s: link to the license screen. */
+		$lines[] = sprintf( __( 'Details: %s', 'axle-license-tracker' ), admin_url( 'plugins.php?page=' . Admin\Page::SLUG . '&edit=' . rawurlencode( $row['id'] ) ) );
+
+		$email = array(
+			/* translators: 1: site name, 2: plugin or theme name. */
+			'subject' => sprintf( __( '[%1$s] %2$s renewed: rehearse the update first', 'axle-license-tracker' ), $site, $row['name'] ),
+			'body'    => implode( "\n\n", $lines ),
+		);
+
+		/**
+		 * Filters the email sent when a renewed license leaves the site behind a newer version.
+		 *
+		 * @param array  $email subject and body.
+		 * @param array  $row   Component row.
+		 * @param string $from  Installed version.
+		 * @param string $to    Newest version known.
+		 */
+		$filtered = (array) apply_filters( 'axle_license_tracker_renewed_email', $email, $row, (string) $from, (string) $to );
+		if ( ! empty( $filtered['subject'] ) && isset( $filtered['body'] ) ) {
+			$email = array(
+				'subject' => (string) $filtered['subject'],
+				'body'    => (string) $filtered['body'],
+			);
+		}
+
+		$this->deliver(
+			array(
+				'component'  => $row['id'],
+				'name'       => $row['name'],
+				'kind'       => 'renewed',
+				'threshold'  => 'renewed',
+				'subject'    => $email['subject'],
+				'body'       => $email['body'],
+				'recipients' => $this->recipients( $row, 'renewed' ),
+				'row'        => $row,
+			),
+			$row
 		);
 	}
 
@@ -307,8 +396,18 @@ class Reminders implements Service {
 		if ( ! $message['recipients'] ) {
 			return;
 		}
-		// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_mail_wp_mail -- One email per license and reminder day, to the site's own people.
-		wp_mail( $message['recipients'], $message['subject'], $message['body'] );
+		if ( ! empty( $message['row'] ) ) {
+			// Each person gets the link they can use: Update Rehearsal, a plain update link, or none.
+			foreach ( $message['recipients'] as $recipient ) {
+				$link = UpdateLinks::for_email( $message['row'], $recipient );
+				$body = $message['body'] . ( $link ? "\n\n" . $link['label'] . ': ' . $link['url'] : '' );
+				// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_mail_wp_mail -- One email per person for a license that needs an update decision.
+				wp_mail( $recipient, $message['subject'], $body );
+			}
+		} else {
+			// phpcs:ignore WordPressVIPMinimum.Functions.RestrictedFunctions.wp_mail_wp_mail -- One email per license and reminder day, to the site's own people.
+			wp_mail( $message['recipients'], $message['subject'], $message['body'] );
+		}
 
 		/**
 		 * Fires after a reminder, alert or digest was sent.
@@ -350,7 +449,7 @@ class Reminders implements Service {
 			if ( $row['ignored'] ) {
 				continue;
 			}
-			$lines[] = sprintf( '- %1$s: %2$s%3$s', $row['name'], Messages::get( 'state_' . $row['state'] ), '' !== $row['renewal'] ? ', ' . $row['renewal'] : '' );
+			$lines[] = sprintf( '- %1$s: %2$s%3$s', $row['name'], Messages::get( 'state_' . $row['state'] ), '' !== $row['renewal'] ? ', ' . Format::date( $row['renewal'] ) : '' );
 		}
 
 		$message = array(
