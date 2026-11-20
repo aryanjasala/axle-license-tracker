@@ -415,7 +415,7 @@ class Abilities implements Service {
 		$input  = (array) $input;
 		$remote = ! empty( $input['sites'] ) && $this->hub->enabled();
 
-		return Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), gmdate( 'Y-m-d' ), (int) ( $input['months'] ?? 12 ) );
+		return Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), Forecast::today(), (int) ( $input['months'] ?? 12 ) );
 	}
 
 	/**

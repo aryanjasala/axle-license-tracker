@@ -3,7 +3,7 @@
 const { test, expect } = require( './utils' );
 const { STORAGE_STATE } = require( './utils/config' );
 const { prepareSite, shot } = require( './utils/media' );
-const { seedDemo, removeFixtures } = require( './seed' );
+const { seedDemo, seedRenewed, removeFixtures } = require( './seed' );
 
 const SCREEN = '/wp-admin/plugins.php?page=axle-license-tracker';
 
@@ -49,5 +49,12 @@ test.describe( 'Screenshots', () => {
 		const widget = page.locator( '#axle_license_tracker' );
 		await expect( widget ).toBeVisible();
 		await shot( page, 4 );
+	} );
+
+	test( '5: a renewed license and a blocked update on the Plugins screen', async () => {
+		seedRenewed();
+		await page.goto( '/wp-admin/plugins.php' );
+		await expect( page.locator( '.alc-renewed-notice' ) ).toBeVisible();
+		await shot( page, 5 );
 	} );
 } );

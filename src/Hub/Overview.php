@@ -8,6 +8,7 @@
 namespace AryanX\Axle\LicenseTracker\Hub;
 
 use AryanX\Axle\LicenseTracker\Details;
+use AryanX\Axle\LicenseTracker\Forecast;
 
 defined( 'ABSPATH' ) || exit;
 
@@ -33,7 +34,7 @@ final class Overview {
 	 * @return array[] Rows, each with site and site_label and days_left.
 	 */
 	public static function rows( array $local, array $sources, string $label, ?string $today = null ): array {
-		$today = $today ?? gmdate( 'Y-m-d' );
+		$today = $today ?? Forecast::today();
 		$rows  = array();
 		foreach ( $local as $entry ) {
 			$rows[] = self::row( (array) $entry, self::LOCAL, $label, $today );

@@ -40,7 +40,14 @@ Part of Axle by AryanX, a family of plugins for running WordPress sites safely.
 * Add what detection cannot know: renewal date, cost and currency, billing cycle, owner, seats, where the key is managed, invoice link, notes. What you enter wins over what was detected, and the list shows which is which.
 * Yearly cost per currency, never converted.
 * A **Costs** tab adds up what the next 12 months of renewals will cost, per month, vendor and currency, lists what it could not add up (no cost, no date, one-off), and downloads as CSV.
-* Reminder emails 30, 14, 7 and 1 days before a renewal date, each sent once, to the site admin and the license's owner. An email when a license expires or updates get blocked. A monthly digest if you want one.
+* Reminder emails 30, 14, 7 and 1 days before a renewal date, each sent once, in your site's date format, to the site admin and the license's owner. An email when a license expires or updates get blocked. A monthly digest if you want one.
+
+**Updates around a renewal:**
+
+* The 14, 7 and 1 day reminders say when an update can be downloaded now and will not be after the renewal date: "rehearse it, then update".
+* When a license goes from expired to valid and the site is behind, a notice on Plugins and an email say "Renewed. Rehearse the jump from 2.6 to 2.9 first". The link opens Update Rehearsal when it is active and you can use it, and a plain update link otherwise. People who cannot update plugins get no link.
+* On Plugins and Themes, an update with no download says why: "Blocked: the Elementor Pro license expired on 3 October." People who manage licenses also see a Renew link and the owner.
+* Nothing here asks a vendor anything. It reads the update data WordPress already has and the stored license state.
 
 **Subscribe your calendar:**
 
@@ -118,16 +125,25 @@ The feed is off until you turn it on. Its address holds a long random token, so 
 
 Yes, per site. Plugins are network-wide on multisite, so every site lists the same plugins, and each site has its own hub and calendar feed. A Network Admin screen is planned.
 
+= Why does it say an update "will not be" available after the renewal date? =
+
+The update data WordPress holds has a download link for the newer version today, and the stored license state says it works. After the license ends most vendors stop serving that link. The plugin never asks the vendor, so treat the line as a prompt to take the update now, after rehearsing it.
+
+= Who sees the Update Rehearsal link? =
+
+Only people who can use Update Rehearsal on the main site, when it is active. Others who can update plugins get a plain update link, and everyone else gets none.
+
 = Does it slow down the site? =
 
 No. The code scan reads at most 3 folders deep and 512 KB per file, runs 5 plugins at a time in the background, and is cached until a plugin changes version. Nothing runs on the front end.
 
 == Screenshots ==
 
-1. Plugins > Licenses: license state and age, update risk, renewal dates, costs per currency and owners.
-2. Editing the details detection cannot know, next to what was detected.
+1. Plugins > Licenses: license state and age, update risk, renewal dates and costs. Type and owner sit under the name, and the actions show on hover.
+2. Editing the details detection cannot know: renewal, cost, cycle and owner first, the rest under More details.
 3. The License column on the Plugins screen.
 4. The dashboard widget: what needs a look and the next renewals.
+5. The Plugins screen after a renewal: a notice to rehearse the jump, and why a blocked update is blocked.
 
 == Changelog ==
 

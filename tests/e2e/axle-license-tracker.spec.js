@@ -53,6 +53,12 @@ const listedIds = () => JSON.parse( wp( 'axle-license-tracker', 'hub', 'list', '
 /** The table row of a component on the screen. */
 const row = ( page, id ) => page.locator( `.alc-table tr[data-component="${ id }"]` );
 
+/** A row action link. Row actions show on hover, like core's list tables, so the row is hovered first. */
+const rowAction = async ( page, id, name ) => {
+	await row( page, id ).hover();
+	return row( page, id ).locator( `a[data-action="${ name }"]` );
+};
+
 test.describe( 'Axle License Tracker', () => {
 	const people = [];
 
@@ -181,7 +187,7 @@ test.describe( 'Axle License Tracker', () => {
 		} );
 
 		await page.goto( SCREEN );
-		await row( page, ID.edd ).locator( 'a[data-action="edit"]' ).click();
+		await ( await rowAction( page, ID.edd, 'edit' ) ).click();
 		await expect( page.getByRole( 'heading', { name: 'ALC EDD Fixture' } ) ).toBeVisible();
 
 		// A bad cost saves nothing.
@@ -199,6 +205,9 @@ test.describe( 'Axle License Tracker', () => {
 		await page.getByLabel( 'Currency' ).fill( 'usd' );
 		await page.getByLabel( 'Owner', { exact: true } ).fill( 'Bean There' );
 		await page.getByLabel( 'Owner email' ).fill( 'owner@example.com' );
+		// Auto-renew sits under "More details".
+		await expect( page.locator( '.alc-more' ) ).not.toHaveAttribute( 'open', '' );
+		await page.locator( '.alc-more summary' ).click();
 		await page.getByLabel( 'Auto-renew' ).selectOption( 'no' );
 		await page.getByRole( 'button', { name: 'Save details' } ).click();
 		await expect( page.locator( '.alc-notice' ) ).toContainText( 'License details saved.' );
@@ -279,7 +288,7 @@ test.describe( 'Axle License Tracker', () => {
 
 	test( 'an ignored component stays listed but gets no reminders', async ( { page } ) => {
 		await page.goto( SCREEN );
-		await row( page, ID.silent ).locator( 'a[data-action="ignore"]' ).click();
+		await ( await rowAction( page, ID.silent, 'ignore' ) ).click();
 		await page.getByLabel( 'Why (optional)' ).fill( 'Retired, removed next sprint' );
 		await page.getByRole( 'button', { name: 'Ignore this component' } ).click();
 		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The component is ignored.' );
@@ -290,7 +299,7 @@ test.describe( 'Axle License Tracker', () => {
 		await page.locator( '.alc-notice .alc-undo' ).click();
 		await expect( page.locator( '.alc-notice' ) ).toContainText( 'The component is tracked again.' );
 		expect( meta( ID.silent, '_alc_ignored' ) ).toBeNull();
-		await row( page, ID.silent ).locator( 'a[data-action="ignore"]' ).click();
+		await ( await rowAction( page, ID.silent, 'ignore' ) ).click();
 		await page.getByLabel( 'Why (optional)' ).fill( 'Retired, removed next sprint' );
 		await page.getByRole( 'button', { name: 'Ignore this component' } ).click();
 		await expect( row( page, ID.silent ) ).toContainText( 'Ignored' );

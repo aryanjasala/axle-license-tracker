@@ -129,6 +129,31 @@ function seedDemo() {
 	wp( 'axle-license-tracker', 'set', 'plugin:alc-silent-fixture/alc-silent-fixture.php', `--renewal=${ date( 45 ) }`, '--cost=49', '--currency=USD', '--cycle=yearly', '--owner=Agency' );
 }
 
+/** Offers the EDD fixture a newer version with a download, or without one. */
+function offerEddUpdate( withPackage = true ) {
+	wpEval( `
+		$t = get_site_transient( "update_plugins" );
+		if ( ! is_object( $t ) ) { $t = new stdClass(); $t->last_checked = time(); }
+		$t->response = isset( $t->response ) && is_array( $t->response ) ? $t->response : array();
+		$t->response["alc-edd-fixture/alc-edd-fixture.php"] = (object) array( "id" => "vendor.example/edd", "slug" => "alc-edd-fixture", "plugin" => "alc-edd-fixture/alc-edd-fixture.php", "new_version" => "9.9.9", "url" => "https://vendor.example/", "package" => ${ withPackage ? '"https://vendor.example/edd.zip"' : '""' } );
+		set_site_transient( "update_plugins", $t );` );
+}
+
+/** The EDD fixture was expired, got renewed, and the site is behind: the Plugins notice shows. */
+function seedRenewed() {
+	setEdd( 'expired' );
+	wp( 'axle-license-tracker', 'remind', '--dry-run' );
+	offerEddUpdate( true );
+	setEdd( 'valid' );
+	wp( 'axle-license-tracker', 'remind', '--dry-run' );
+}
+
+/** Undoes seedRenewed. */
+function clearRenewed() {
+	wpEval( '$t = get_site_transient( "update_plugins" ); if ( is_object( $t ) && isset( $t->response["alc-edd-fixture/alc-edd-fixture.php"] ) ) { unset( $t->response["alc-edd-fixture/alc-edd-fixture.php"] ); set_site_transient( "update_plugins", $t ); }' );
+	wp( 'axle-license-tracker', 'remind', '--dry-run' );
+}
+
 /** Marks a hub site as failing, as three failed syncs in a row would. */
 function failSite( label ) {
 	wpEval(
@@ -149,4 +174,4 @@ function removeSites() {
 	wpEval( 'foreach ( array_keys( (array) get_option( "axle_license_tracker_hub_sites", array() ) ) as $id ) { delete_option( "axle_license_tracker_hub_data_" . $id ); } delete_option( "axle_license_tracker_hub_sites" );' );
 }
 
-module.exports = { failSite, removeSites, KEYS, PLUGINS, installFixtures, removeFixtures, resetData, setFreemius, setEdd, setLastSeen, rows, seedDemo };
+module.exports = { offerEddUpdate, seedRenewed, clearRenewed, failSite, removeSites, KEYS, PLUGINS, installFixtures, removeFixtures, resetData, setFreemius, setEdd, setLastSeen, rows, seedDemo };

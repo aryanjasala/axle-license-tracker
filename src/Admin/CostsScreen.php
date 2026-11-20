@@ -70,7 +70,7 @@ class CostsScreen implements Service {
 	 * @return array
 	 */
 	private function forecast(): array {
-		return Forecast::build( Hub::billable( $this->hub->rows( $this->all_sites() ) ), gmdate( 'Y-m-d' ), 12 );
+		return Forecast::build( Hub::billable( $this->hub->rows( $this->all_sites() ) ), Forecast::today(), 12 );
 	}
 
 	/**

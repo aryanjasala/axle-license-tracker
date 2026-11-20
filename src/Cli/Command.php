@@ -260,7 +260,7 @@ final class Command {
 	public function costs( $args, $assoc_args ): void {
 		unset( $args );
 		$remote   = ! empty( $assoc_args['sites'] ) && $this->hub->enabled();
-		$forecast = Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), gmdate( 'Y-m-d' ), (int) ( $assoc_args['months'] ?? 12 ) );
+		$forecast = Forecast::build( Hub::billable( $this->hub->rows( $remote ) ), Forecast::today(), (int) ( $assoc_args['months'] ?? 12 ) );
 		$format   = (string) ( $assoc_args['format'] ?? 'table' );
 
 		if ( 'csv' === $format ) {

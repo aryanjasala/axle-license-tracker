@@ -185,7 +185,7 @@ class Calendar implements Service {
 		header( 'Content-Disposition: inline; filename="license-renewals.ics"' );
 		header( 'X-Robots-Tag: noindex, nofollow' );
 		header( 'Referrer-Policy: no-referrer' );
-		echo $this->render( $this->events( gmdate( 'Y-m-d' ) ), gmdate( 'Ymd\THis\Z' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- A text/calendar file, escaped per RFC 5545 in render().
+		echo $this->render( $this->events( Forecast::today() ), gmdate( 'Ymd\THis\Z' ) ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- A text/calendar file, escaped per RFC 5545 in render().
 		exit;
 	}
 

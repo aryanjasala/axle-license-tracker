@@ -23,9 +23,57 @@
 	vertical-align: top;
 }
 
-.alc-table .row-actions {
-	position: static;
-	color: var(--axle-muted);
+.alc-table .column-name {
+	width: 30%;
+}
+
+.alc-table .column-cost,
+.alc-table .column-renews {
+	width: 11%;
+}
+
+.alc-table .row-actions span {
+	white-space: nowrap;
+}
+
+/* Core shows row actions on hover; below 783 px there is no hover on a phone or a narrow window, so show them. */
+@media screen and (max-width: 782px) {
+	.alc-table .row-actions {
+		position: static;
+	}
+
+	.alc-table .column-name,
+	.alc-table .column-cost,
+	.alc-table .column-renews {
+		width: auto;
+	}
+}
+
+.alc-table .alc-meta {
+	display: inline-block;
+	margin-top: 2px;
+}
+
+.alc-more {
+	margin-top: 12px;
+	border-top: 1px solid var(--axle-line, #dcdcde);
+	padding-top: 12px;
+}
+
+.alc-more > summary {
+	cursor: pointer;
+	font-weight: 600;
+	padding: 4px 0;
+}
+
+.alc-renewed-notice .alc-renewed-link {
+	margin-left: 8px;
+	vertical-align: baseline;
+}
+
+.alc-blocked-update {
+	display: block;
+	margin-top: 4px;
 }
 
 .alc-muted {

@@ -88,6 +88,11 @@ abstract class LicenseTestCase extends TestCase {
 				return 'timestamp' === $type ? time() : gmdate( $type );
 			}
 		);
+		Functions\when( 'wp_date' )->alias(
+			static function ( $format, $timestamp = null ) {
+				return gmdate( $format, (int) $timestamp );
+			}
+		);
 		Functions\when( 'admin_url' )->alias(
 			static function ( $path = '' ) {
 				return 'https://example.com/wp-admin/' . $path;

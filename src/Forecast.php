@@ -16,6 +16,15 @@ defined( 'ABSPATH' ) || exit;
 final class Forecast {
 
 	/**
+	 * Today in the site's time zone, Y-m-d. The forecast and the reminders must agree on the day.
+	 *
+	 * @return string
+	 */
+	public static function today(): string {
+		return current_time( 'Y-m-d' );
+	}
+
+	/**
 	 * The dates a row renews on inside a window.
 	 *
 	 * A yearly license renews once, a monthly one every month from its date. A
